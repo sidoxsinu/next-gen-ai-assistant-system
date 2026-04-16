@@ -41,6 +41,11 @@ interface Message {
     confidence?: number;
   };
   complexityMode?: 'ELI5' | 'EXPERT';
+  reasoningChain?: { step: number; title: string; detail: string }[];
+  isConstructingReasoning?: boolean;
+  factCheckReport?: { claim: string; verdict: 'VERIFIED' | 'UNCERTAIN' | 'DISPUTED'; reason: string }[];
+  isFactChecking?: boolean;
+  isFactCheckOpen?: boolean;
 }
 
 interface WorkflowTask {
@@ -270,6 +275,48 @@ export default function App() {
     sendCommand(suggestion);
   };
 
+  const verifyFacts = async (msgId: string, fullText: string) => {
+    if (!apiKey) return;
+    setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isFactChecking: true, isFactCheckOpen: true } : m));
+    
+    try {
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages: [
+            { 
+               role: "system", 
+               content: "You are a rigorous fact-checking engine. Analyze the following AI-generated response thoroughly. For every factual claim, classify it as: VERIFIED (well established fact), UNCERTAIN (plausible but unconfirmed), or DISPUTED (contradicts known evidence). Return ONLY a flat JSON array of objects with keys: 'claim' (the extracted claim), 'verdict' (VERIFIED / UNCERTAIN / DISPUTED), and 'reason' (one sentence explanation). Nothing else. Do NOT WRAP IN MARKDOWN." 
+            }, 
+            { role: "user", content: fullText }
+          ],
+          temperature: 0.1
+        })
+      });
+      const data = await res.json();
+      let parsed = [];
+      try {
+        let jsonStr = data.choices[0].message.content.trim();
+        if (jsonStr.startsWith("```json")) jsonStr = jsonStr.slice(7, -3).trim();
+        if (jsonStr.startsWith("```")) jsonStr = jsonStr.slice(3, -3).trim();
+        parsed = JSON.parse(jsonStr);
+      } catch (e) {
+        console.error("Fact checker parsing failed", e);
+      }
+      
+      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isFactChecking: false, factCheckReport: Array.isArray(parsed) ? parsed : [] } : m));
+    } catch (e) {
+      console.error(e);
+      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isFactChecking: false } : m));
+    }
+  };
+
+  const closeFactCheck = (msgId: string) => {
+    setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isFactCheckOpen: false } : m));
+  };
+
   const handleSend = () => sendCommand(input);
 
   const extractAndAddTopics = async (sourceText: string, triggeringMode: string) => {
@@ -374,6 +421,46 @@ export default function App() {
         ...messages.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.rawText || m.text })),
         { role: 'user', content: commandStr }
       ];
+
+      // Reasoning Engine Fetch
+      setMessages(prev => prev.map(m => m.id === modelMsgId ? { ...m, isConstructingReasoning: true } : m));
+      try {
+        const reasoningRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+             model: "llama-3.3-70b-versatile",
+             messages: [
+                { role: 'system', content: "You are a reasoning engine. Break down your thinking process for the following query into exactly 5 clear sequential steps. Return ONLY a JSON array of 5 objects, each with keys: 'step' (number 1-5), 'title' (short 3-word max label in CAPS), and 'detail' (one sentence explanation). Nothing else, no markdown, no preamble." },
+                ...messages.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.rawText || m.text })),
+                { role: 'user', content: commandStr }
+             ],
+             temperature: 0.2
+          })
+        });
+        
+        if (reasoningRes.ok) {
+           const rData = await reasoningRes.json();
+           let rText = rData.choices[0].message.content.trim();
+           if (rText.startsWith("```json")) rText = rText.slice(7, -3).trim();
+           if (rText.startsWith("```")) rText = rText.slice(3, -3).trim();
+           const rChain = JSON.parse(rText);
+           if (Array.isArray(rChain) && rChain.length > 0) {
+              setMessages(prev => prev.map(m => m.id === modelMsgId ? { ...m, reasoningChain: rChain, isConstructingReasoning: false } : m));
+              await new Promise(r => setTimeout(r, 1600)); // Stagger delay matching CSS keys
+           } else {
+              setMessages(prev => prev.map(m => m.id === modelMsgId ? { ...m, isConstructingReasoning: false } : m));
+           }
+        } else {
+           setMessages(prev => prev.map(m => m.id === modelMsgId ? { ...m, isConstructingReasoning: false } : m));
+        }
+      } catch (err) {
+         console.error("Reasoning chain failed", err);
+         setMessages(prev => prev.map(m => m.id === modelMsgId ? { ...m, isConstructingReasoning: false } : m));
+      }
 
       const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
@@ -1090,7 +1177,8 @@ Use brutalist inline CSS styling for the HTML. Format strictly as JSON { "subjec
                         {m.role === 'model' && i === messages.length - 1 && isTyping && (
                           <span className="absolute right-2 top-2 w-2 h-4 bg-black animate-pulse"></span>
                         )}
-                        <div className="markdown-body text-[0.85rem] leading-[1.4] whitespace-pre-wrap font-mono relative z-10">
+                        <ReasoningChainViewer isConstructing={m.isConstructingReasoning} chain={m.reasoningChain} />
+                        <div className="markdown-body text-[0.85rem] leading-[1.4] whitespace-pre-wrap font-mono relative z-10 mt-2">
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
                             {m.text || (i === messages.length - 1 && m.role === 'model' ? '...' : '')}
                           </ReactMarkdown>
@@ -1150,9 +1238,17 @@ Use brutalist inline CSS styling for the HTML. Format strictly as JSON { "subjec
                             >
                               {pinnedMessageIds.includes(m.id) ? '[ UNPIN_NODE ]' : '[ PIN_NODE ]'}
                             </button>
+                            <button
+                              onClick={() => m.isFactChecking ? null : verifyFacts(m.id, m.rawText || m.text)}
+                              disabled={m.isFactChecking}
+                              className={`bg-white text-black border-2 border-black text-[0.6rem] px-2 py-1 font-bold active:translate-y-1 ${m.isFactChecking ? 'text-red-500' : 'hover:bg-[#FFE600]'}`}
+                            >
+                              {m.isFactChecking ? '[ SCANNING_FACTS... ]' : '[ VERIFY_FACTS ]'}
+                            </button>
                           </div>
                         )}
                       </div>
+                      <FactCheckReport report={m.factCheckReport} isOpen={m.isFactCheckOpen} onClose={() => closeFactCheck(m.id)} />
                     </div>
                   )
                 })}
@@ -1576,6 +1672,139 @@ function KnowledgeMapRenderer({
           <div>FIRST_SEEN: {new Date(hoverData.node.firstSeenMs).toLocaleTimeString()}</div>
         </div>
       )}
+    </div>
+  );
+}
+
+function ReasoningChainViewer({
+  chain,
+  isConstructing
+}: {
+  chain?: { step: number; title: string; detail: string }[];
+  isConstructing?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const interactedRef = useRef(false);
+
+  useEffect(() => {
+    if (chain && chain.length > 0 && !isConstructing) {
+      // Stagger animation + final text fade + 3 seconds
+      const animationTime = (chain.length * 300) + 300 + 3000;
+      const timer = setTimeout(() => {
+        if (!interactedRef.current) {
+          setExpanded(false);
+        }
+      }, animationTime);
+      return () => clearTimeout(timer);
+    }
+  }, [chain, isConstructing]);
+
+  const handleToggle = () => {
+    interactedRef.current = true;
+    setExpanded(!expanded);
+  };
+
+  if (!chain && !isConstructing) return null;
+
+  return (
+    <div className="mb-4 border-l-[3px] border-[#FFE600] pl-3">
+      <div className="flex justify-between items-center bg-gray-100 border-[2px] border-black p-2 font-mono text-xs uppercase font-bold cursor-pointer relative z-10" onClick={handleToggle}>
+        <span>{'>_REASONING_CHAIN'}</span>
+        <span>{expanded ? '[COLLAPSE]' : '[EXPAND]'}</span>
+      </div>
+      
+      <div className={`overflow-hidden transition-[max-height,opacity,margin] duration-500 ease-in-out ${expanded ? 'max-h-[2000px] opacity-100 mt-3' : 'max-h-0 opacity-0 mt-0'}`}>
+        <div className="flex flex-col gap-3">
+          {isConstructing && (
+            <div className="border-[2px] border-black p-3 bg-white font-mono text-xs font-bold flex flex-col gap-2">
+               <span className="uppercase animate-pulse text-black">CONSTRUCTING_REASONING_CHAIN ████░░░░░░ 40%</span>
+            </div>
+          )}
+          
+          {chain && chain.length > 0 && chain.map((c, idx) => (
+             <div 
+               key={idx} 
+               className="border-[2px] border-black p-3 bg-white slide-fade-in relative shadow-[4px_4px_0_#000]"
+               style={{ animationDelay: `${idx * 300}ms` }}
+             >
+               <div className="absolute -top-3 -left-3 bg-[#FFE600] text-black border-[2px] border-black font-black px-1 text-xs">
+                 [{String(c.step).padStart(2, '0')}]
+               </div>
+               <div className="font-mono font-black uppercase text-[0.75rem] mb-1">{c.title}</div>
+               <div className="font-mono text-[0.65rem] text-gray-700">{c.detail}</div>
+               {idx < chain.length - 1 && (
+                  <div className="absolute -bottom-4 left-1/2 -ml-2 text-black font-black block">▼</div>
+               )}
+             </div>
+          ))}
+
+          {chain && chain.length > 0 && (
+             <div className="text-[0.65rem] font-bold font-mono text-gray-500 mt-2 fade-in" style={{ animationDelay: `${chain.length * 300}ms` }}>
+                REASONING_COMPLETE — INITIALIZING_OUTPUT_STREAM
+             </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FactCheckReport({
+  report,
+  isOpen,
+  onClose
+}: {
+  report?: { claim: string; verdict: 'VERIFIED' | 'UNCERTAIN' | 'DISPUTED'; reason: string }[];
+  isOpen?: boolean;
+  onClose: () => void;
+}) {
+  if (!isOpen || !report) return null;
+
+  const verifiedCount = report.filter(r => r.verdict === 'VERIFIED').length;
+  const trustScore = report.length > 0 ? Math.round((verifiedCount / report.length) * 100) : 100;
+  
+  let scoreLabel = "MOSTLY_RELIABLE";
+  if (trustScore < 50) scoreLabel = "HIGHLY_UNTASKED";
+  else if (trustScore < 80) scoreLabel = "MIXED_RELIABILITY";
+
+  return (
+    <div className="mt-2 border-l-[4px] border-[#FF2D00] pl-3">
+      <div className="bg-black text-white font-mono font-bold text-xs uppercase p-2 border-[2px] border-black">
+        {'>_FACT_CHECK_REPORT'}
+      </div>
+      <div className="border-[2px] border-t-0 border-black bg-white p-3 flex flex-col gap-3">
+        {report.map((item, idx) => (
+          <div key={idx} className="flex flex-col md:flex-row gap-2 border-b-[2px] border-dashed border-gray-300 pb-3 last:border-b-0 last:pb-0">
+             <div className="flex-1">
+               <span className="font-black text-[0.65rem] block mb-1">CLAIM:</span>
+               <div className="font-mono text-xs">{item.claim}</div>
+             </div>
+             <div className="w-24 shrink-0">
+               <span className="font-black text-[0.65rem] block mb-1">VERDICT:</span>
+               <div>
+                  <span className={`border-[2px] border-black text-[0.6rem] px-1 font-black uppercase inline-block ${item.verdict === 'VERIFIED' ? 'bg-[#00FF00]' : item.verdict === 'DISPUTED' ? 'bg-[#FF2D00] text-white' : 'bg-[#FFE600]'}`}>
+                    [{item.verdict}]
+                  </span>
+               </div>
+             </div>
+             <div className="flex-1">
+               <span className="font-black text-[0.65rem] block mb-1">REASON:</span>
+               <div className="font-mono text-[0.65rem] text-gray-500">{item.reason}</div>
+             </div>
+          </div>
+        ))}
+        
+        <div className="mt-2 pt-2 border-t-[2px] border-black flex flex-col gap-1">
+           <div className="font-black text-xs uppercase">TRUST_SCORE: {trustScore}% — {scoreLabel}</div>
+           <div className="h-3 border-[2px] border-black bg-gray-200">
+              <div className={`h-full ${trustScore > 80 ? 'bg-green-500' : (trustScore >= 50 ? 'bg-[#FFE600]' : 'bg-[#FF2D00]')}`} style={{ width: `${trustScore}%` }}></div>
+           </div>
+        </div>
+
+        <button onClick={onClose} className="mt-2 bg-black text-white px-3 py-2 font-black text-xs border-[2px] border-black hover:bg-white hover:text-black transition-colors">
+           [CLOSE_REPORT]
+        </button>
+      </div>
     </div>
   );
 }
