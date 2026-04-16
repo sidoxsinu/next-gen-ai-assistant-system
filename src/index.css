@@ -34,3 +34,48 @@ body {
 ::selection {
   @apply bg-[#FFE600] text-black;
 }
+
+/* UI Effects */
+@keyframes glitch {
+  0% { transform: translate(0) }
+  20% { transform: translate(-2px, 2px) }
+  40% { transform: translate(-2px, -2px) }
+  60% { transform: translate(2px, 2px) }
+  80% { transform: translate(2px, -2px) }
+  100% { transform: translate(0) }
+}
+.glitch {
+  animation: glitch 0.2s cubic-bezier(.25, .46, .45, .94) both infinite;
+  color: #FF2D00 !important;
+  border-color: #FF2D00 !important;
+  background-color: black !important;
+}
+
+/* Scanlines overlay */
+.scanlines {
+  pointer-events: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 50;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.15) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+  background-size: 100% 4px, 3px 100%;
+}
+
+/* Brutalist Dark Mode Overrides */
+.dark-mode {
+  background-color: #000 !important;
+  color: #fff !important;
+  border-color: #fff !important;
+}
+.dark-mode .bg-white { background-color: #111 !important; color: #fff !important; }
+.dark-mode .bg-\[\#E5E5E5\] { background-color: #222 !important; }
+.dark-mode .bg-gray-50 { background-color: #1a1a1a !important; }
+.dark-mode .border-black { border-color: #FFE600 !important; }
+.dark-mode .text-black { color: #FFE600 !important; }
+.dark-mode .bg-black { background-color: #FFE600 !important; color: #000 !important; }
+.dark-mode .border-dashed.border-black { border-color: #FFE600 !important; }
+.dark-mode nav.bg-black { background-color: #FFE600 !important; }
+.dark-mode header.bg-\[\#FFE600\] { background-color: #000 !important; border-bottom-color: #FFE600 !important; }

@@ -4,7 +4,6 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-// Removed GoogleGenAI dependency
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { 
@@ -23,15 +22,21 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-
-
 type Mode = 'RESEARCH' | 'SUPPORT' | 'WORKFLOW' | 'KNOWLEDGE';
 
 interface Message {
+  id: string;
   role: 'user' | 'model';
+  rawText: string;
   text: string;
   type?: 'text' | 'image' | 'audio' | 'thinking' | 'workflow';
   data?: any;
+  metadata?: {
+    tone?: string;
+    tags?: string[];
+    suggestions?: string[];
+    confidence?: number;
+  };
 }
 
 interface WorkflowTask {
@@ -63,9 +68,34 @@ export default function App() {
   const [activeWorkflow, setActiveWorkflow] = useState<WorkflowTask[]>([]);
   const [emailTarget, setEmailTarget] = useState('');
   const [isEmailing, setIsEmailing] = useState(false);
+
+  // New Upgrade States
+  const [outputLang, setOutputLang] = useState('English');
+  const [streamSpeed, setStreamSpeed] = useState(0);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [scanlineEnabled, setScanlineEnabled] = useState(false);
+  const [isErrorGlitching, setIsErrorGlitching] = useState(false);
+  const [pinnedMessageIds, setPinnedMessageIds] = useState<string[]>([]);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [sessionTime, setSessionTime] = useState(0);
   
   const scrollRef = useRef<HTMLDivElement>(null);
-  const audioContext = useRef<AudioContext | null>(null);
+
+  useEffect(() => {
+    if (isDarkMode) document.body.classList.add('dark-mode');
+    else document.body.classList.remove('dark-mode');
+  }, [isDarkMode]);
+
+  useEffect(() => {
+    const inv = setInterval(() => setSessionTime(s => s + 1), 1000);
+    return () => clearInterval(inv);
+  }, []);
+
+  useEffect(() => {
+    if (messages.length > 0) {
+       localStorage.setItem('chat_history', JSON.stringify(messages));
+    }
+  }, [messages]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -73,41 +103,135 @@ export default function App() {
     }
   }, [messages, thinkingProcess, isTyping]);
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
+  const parseMetadata = (rawText: string) => {
+    const split = rawText.split('--META--');
+    const textStr = split[0];
+    let metaObj: any = undefined;
+    if (split.length > 1) {
+       const mStr = split[1];
+       metaObj = {};
+       const toneMatch = mStr.match(/TONE:\s*([^\n]+)/);
+       if (toneMatch) metaObj.tone = toneMatch[1].trim();
+       const tagsMatch = mStr.match(/TAGS:\s*([^\n]+)/);
+       if (tagsMatch) metaObj.tags = tagsMatch[1].split(' ').filter(t=>t.startsWith('#'));
+       const suggMatch = mStr.match(/SUGGESTIONS:\s*([^\n]+)/);
+       if (suggMatch) metaObj.suggestions = suggMatch[1].split('|').map(s=>s.trim());
+       const confMatch = mStr.match(/CONFIDENCE:\s*(\d+)/);
+       if (confMatch) metaObj.confidence = parseInt(confMatch[1]);
+    }
+    return { pText: textStr, pMeta: metaObj };
+  };
+
+  useEffect(() => {
+    if (streamSpeed === 0) return;
+    const interval = setInterval(() => {
+       setMessages(prev => {
+          let updated = false;
+          const newMsgs = prev.map(msg => {
+             if (msg.role === 'model' && msg.rawText && msg.rawText.length > msg.text.length) {
+                const { pText, pMeta } = parseMetadata(msg.rawText);
+                if (msg.text.length < pText.length) {
+                   updated = true;
+                   const step = streamSpeed === 20 ? 4 : 1;
+                   const updatedText = pText.slice(0, msg.text.length + step);
+                   return { ...msg, text: updatedText, metadata: (updatedText.length >= pText.length && pMeta) ? pMeta : msg.metadata };
+                } else if (!msg.metadata && pMeta) {
+                   updated = true;
+                   return { ...msg, metadata: pMeta };
+                }
+             }
+             return msg;
+          });
+          return updated ? newMsgs : prev;
+       });
+    }, streamSpeed);
+    return () => clearInterval(interval);
+  }, [streamSpeed]);
+
+  const loadHistory = () => {
+    try {
+      const saved = localStorage.getItem('chat_history');
+      if (saved) setMessages(JSON.parse(saved));
+    } catch(e) {}
+  };
+
+  const getTokenCount = () => {
+    const textData = messages.map(m => m.rawText || m.text).join(' ');
+    return Math.floor(textData.length / 4);
+  };
+  
+  const formatTime = (sec: number) => {
+    const m = Math.floor(sec / 60).toString().padStart(2, '0');
+    const s = (sec % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
+  const triggerError = () => {
+    setIsErrorGlitching(true);
+    setTimeout(() => setIsErrorGlitching(false), 2000);
+  };
+
+  const exportSession = () => {
+    const textLog = messages.map(m => `[${m.role.toUpperCase()}]\n${m.rawText || m.text}`).join('\n\n');
+    const blob = new Blob([textLog], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `SESSION_LOG_${Date.now()}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const copyMessage = (id: string, textStr: string) => {
+    navigator.clipboard.writeText(textStr);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const togglePin = (id: string) => {
+    setPinnedMessageIds(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
+  };
+
+  const handleFollowUp = (suggestion: string) => {
+     sendCommand(suggestion);
+  };
+
+  const handleSend = () => sendCommand(input);
+
+  const sendCommand = async (commandStr: string) => {
+    if (!commandStr.trim()) return;
     if (!apiKey) {
-      setMessages(prev => [{ role: 'model', text: ">> FATAL ERROR: GROQ API_KEY REQUIRED. INPUT IN HEADER." }, ...prev]);
+      setMessages(prev => [{ id: Date.now().toString(), role: 'model', text: ">> FATAL ERROR: GROQ API_KEY REQUIRED. INPUT IN HEADER.", rawText: ">> FATAL ERROR: GROQ API_KEY REQUIRED. INPUT IN HEADER." }, ...prev]);
       return;
     }
 
-    const userMsg: Message = { role: 'user', text: input };
+    const userMsg: Message = { id: Date.now().toString(), role: 'user', text: commandStr, rawText: commandStr };
     setMessages(prev => [...prev, userMsg]);
-    const currentInput = input;
     setInput('');
     setIsTyping(true);
     setThinkingProcess('');
 
-    // Pre-create the model message for streaming
     const modelMsgIndex = messages.length + 1;
-    setMessages(prev => [...prev, { role: 'model', text: '' }]);
+    const modelMsgId = (Date.now() + 1).toString();
+    setMessages(prev => [...prev, { id: modelMsgId, role: 'model', text: '', rawText: '' }]);
 
     try {
-      let fullText = '';
+      let fullRawText = '';
       
-      let systemPrompt = "You are a helpful AI assistant. Respond in clean, complete, well-formed sentences. DO NOT use markdown formatting like **, ##, or bullet points. Output plain text only.";
-      if (activeMode === 'RESEARCH') systemPrompt = "Act as a Research Assistant. Provide a structured summary with key points and source suggestions. Respond in clean, complete, well-formed sentences. Avoid markdown formatting like ** or ##.";
-      if (activeMode === 'SUPPORT') systemPrompt = "You are an Intelligent Customer Support Chatbot. Handle queries professionally, escalate when needed, and maintain context. Respond in clean, complete sentences without markdown formatting.";
-      if (activeMode === 'WORKFLOW') systemPrompt = "Break this task/workflow into actionable steps. FORMAT YOUR RESPONSE AS A JSON ARRAY OF OBJECTS with fields: id, label, priority (HIGH/MEDIUM/LOW). Also include a clear text explanation before the JSON, without markdown formatting.";
+      let systemPrompt = `You are a helpful AI assistant. Respond strictly in ${outputLang}. Respond in clean, complete, well-formed sentences. DO NOT use markdown formatting like **, ##, or bullet points. Output plain text only.\nAT THE VERY END OF YOUR RESPONSE, YOU MUST APPEND EXACTLY THIS METADATA BLOCK:\n--META--\nTONE: [one word describing tone]\nTAGS: #tag1 #tag2 #tag3\nSUGGESTIONS: [Follow up 1] | [Follow up 2] | [Follow up 3]\nCONFIDENCE: [0-100]`;
+      
+      if (activeMode === 'RESEARCH') systemPrompt = `Act as a Research Assistant. Provide a structured summary with key points and source suggestions. Respond strictly in ${outputLang}. Respond in clean, complete, well-formed sentences. Avoid markdown formatting like ** or ##.\nAT THE VERY END OF YOUR RESPONSE, YOU MUST APPEND EXACTLY THIS METADATA BLOCK:\n--META--\nTONE: [one word]\nTAGS: #tag1 #tag2 #tag3\nSUGGESTIONS: [Follow up 1] | [Follow up 2] | [Follow up 3]\nCONFIDENCE: [0-100]`;
+      if (activeMode === 'SUPPORT') systemPrompt = `You are an Intelligent Customer Support Chatbot. Handle queries professionally, escalate when needed, and maintain context. Respond strictly in ${outputLang}. Respond in clean, complete sentences without markdown formatting.\nAT THE VERY END OF YOUR RESPONSE, YOU MUST APPEND EXACTLY THIS METADATA BLOCK:\n--META--\nTONE: [one word]\nTAGS: #tag1 #tag2 #tag3\nSUGGESTIONS: [Follow up 1] | [Follow up 2] | [Follow up 3]\nCONFIDENCE: [0-100]`;
+      if (activeMode === 'WORKFLOW') systemPrompt = `Break this task/workflow into actionable steps. FORMAT YOUR RESPONSE AS A JSON ARRAY OF OBJECTS with fields: id, label, priority (HIGH/MEDIUM/LOW). Also include a clear text explanation before the JSON, without markdown formatting. Respond strictly in ${outputLang}.\nAT THE VERY END OF YOUR RESPONSE, YOU MUST APPEND EXACTLY THIS METADATA BLOCK:\n--META--\nTONE: [one word]\nTAGS: #tag1 #tag2 #tag3\nSUGGESTIONS: [Follow up 1] | [Follow up 2] | [Follow up 3]\nCONFIDENCE: [0-100]`;
       if (activeMode === 'KNOWLEDGE') {
         const context = `User Preferences: ${userPreferences.join(', ')}. Knowledge Trail: ${knowledgeTrail.map(k => k.subject).join(' -> ')}.`;
-        systemPrompt = `${context}\n\nAct as a Personal Knowledge Companion. Explore topics, suggest related areas, and detect any new user preferences. Respond in clean, complete, well-formed sentences. Avoid markdown formatting.`;
+        systemPrompt = `${context}\n\nAct as a Personal Knowledge Companion. Explore topics, suggest related areas, and detect any new user preferences. Respond strictly in ${outputLang}. Respond in clean, complete, well-formed sentences. Avoid markdown formatting.\nAT THE VERY END OF YOUR RESPONSE, YOU MUST APPEND EXACTLY THIS METADATA BLOCK:\n--META--\nTONE: [one word]\nTAGS: #tag1 #tag2 #tag3\nSUGGESTIONS: [Follow up 1] | [Follow up 2] | [Follow up 3]\nCONFIDENCE: [0-100]`;
       }
 
-      // Convert messages to Groq format
       const apiMessages = [
         { role: 'system', content: systemPrompt },
-        ...messages.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })),
-        { role: 'user', content: currentInput }
+        ...messages.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.rawText || m.text })),
+        { role: 'user', content: commandStr }
       ];
 
       const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -137,11 +261,8 @@ export default function App() {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          // Accumulate chunk in buffer
           buffer += decoder.decode(value, { stream: true });
-          // Split by newline
           const lines = buffer.split('\n');
-          // Keep the last partial line in the buffer
           buffer = lines.pop() || '';
           
           for (const line of lines) {
@@ -153,50 +274,58 @@ export default function App() {
                try {
                  const data = JSON.parse(trimmedLine.slice(6));
                  if (data.choices && data.choices[0].delta && data.choices[0].delta.content) {
-                    fullText += data.choices[0].delta.content;
+                    fullRawText += data.choices[0].delta.content;
                     setMessages(prev => {
                       const newMsgs = [...prev];
-                      newMsgs[modelMsgIndex] = { ...newMsgs[modelMsgIndex], text: fullText };
+                      const curMsg = newMsgs[modelMsgIndex];
+                      if (!curMsg) return prev;
+                      const updatedMsg = { ...curMsg, rawText: fullRawText };
+                      if (streamSpeed === 0) {
+                         const { pText, pMeta } = parseMetadata(fullRawText);
+                         updatedMsg.text = pText;
+                         updatedMsg.metadata = pMeta;
+                      }
+                      newMsgs[modelMsgIndex] = updatedMsg;
                       return newMsgs;
                     });
                  }
                } catch(e) {
                  console.error("Parse error on streaming chunk:", trimmedLine, e);
+                 triggerError();
                }
             }
           }
         }
       }
 
-      // Feature specific post-processing
       if (activeMode === 'KNOWLEDGE') {
-        // Add to knowledge trail
-        const newSubject = currentInput.split(' ').slice(0, 3).join(' ');
+        const newSubject = commandStr.split(' ').slice(0, 3).join(' ');
         setKnowledgeTrail(prev => [{
           id: Date.now().toString(),
           subject: newSubject,
           timestamp: new Date().toLocaleTimeString()
-        }, ...prev].slice(0, 10)); // Keep last 10
+        }, ...prev].slice(0, 10));
       }
 
       if (activeMode === 'WORKFLOW') {
-        // Attempt to parse JSON tasks from the text
-        const jsonMatch = fullText.match(/\[\s*\{.*\}\s*\]/s);
+        const jsonMatch = fullRawText.match(/\[\s*\{.*\}\s*\]/s);
         if (jsonMatch) {
           try {
             const tasks = JSON.parse(jsonMatch[0]);
             setActiveWorkflow(tasks.map((t: any) => ({ ...t, completed: false })));
           } catch (e) {
             console.error("Failed to parse tasks", e);
+            triggerError();
           }
         }
       }
 
     } catch (err: any) {
       console.error(err);
+      triggerError();
       setMessages(prev => {
         const newMsgs = [...prev];
-        newMsgs[modelMsgIndex] = { role: 'model', text: `>> FATAL EXCEPTION: ${err.message || 'SYSTEM FAILURE // PACKET LOSS DETECTED'}` };
+        newMsgs[modelMsgIndex] = { id: Date.now().toString(), role: 'model', text: `>> FATAL EXCEPTION: ${err.message || 'SYSTEM FAILURE'}`, rawText: `>> FATAL EXCEPTION: ${err.message || 'SYSTEM FAILURE'}` };
         return newMsgs;
       });
     } finally {
@@ -209,9 +338,9 @@ export default function App() {
   };
 
 
-  const playTTS = async (text: string) => {
+  const playTTS = async (textStr: string) => {
     const synth = window.speechSynthesis;
-    const utterance = new SpeechSynthesisUtterance(text);
+    const utterance = new SpeechSynthesisUtterance(textStr);
     utterance.volume = 1;
     utterance.rate = 1.1; 
     utterance.pitch = 0.8;
@@ -231,6 +360,10 @@ export default function App() {
     }
   };
 
+  const haltTTS = () => {
+    window.speechSynthesis.cancel();
+  };
+
   const startSTT = async () => {
     setIsRecording(true);
     let stream: MediaStream;
@@ -247,14 +380,13 @@ export default function App() {
         setIsRecording(false);
         const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
         
-        // Stop all tracks
         stream.getTracks().forEach(track => track.stop());
 
         const formData = new FormData();
         formData.append("file", audioBlob, "audio.webm");
         formData.append("model", "whisper-large-v3");
 
-        setMessages(prev => [...prev, { role: 'model', text: "[PROCESSING AUDIO DATA VIA GROQ KERNEL...]" }]);
+        setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: "[PROCESSING AUDIO DATA VIA GROQ KERNEL...]", rawText: "[PROCESSING AUDIO DATA VIA GROQ KERNEL...]" }]);
         
         try {
           const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
@@ -266,21 +398,24 @@ export default function App() {
           });
           const data = await res.json();
           if (data.text) {
-             setMessages(prev => [...prev.slice(0, -1), { role: 'model', text: `>> VOCAL_INPUT_DECODED: "${data.text}"` }]);
+             setMessages(prev => {
+                const arr = [...prev];
+                arr.pop();
+                return [...arr, { id: Date.now().toString(), role: 'model', text: `>> VOCAL_INPUT_DECODED: "${data.text}"`, rawText: `>> VOCAL_INPUT_DECODED: "${data.text}"` }];
+             });
              setInput(data.text);
           } else {
              throw new Error(data.error?.message || "STT Failed");
           }
         } catch(e) {
-          console.error("Groq STT Error:", e);
-          setMessages(prev => [...prev.slice(0, -1), { role: 'model', text: ">> FATAL: VOCAL_INPUT_REJECTED // PACKET_LOSS" }]);
+          triggerError();
+          setMessages(prev => [...prev.slice(0, -1), { id: Date.now().toString(), role: 'model', text: ">> FATAL: VOCAL_INPUT_REJECTED // PACKET_LOSS", rawText: ">> FATAL: VOCAL_INPUT_REJECTED // PACKET_LOSS" }]);
         }
       });
 
       mediaRecorder.start();
-      setMessages(prev => [...prev, { role: 'model', text: "[AUDIO TRANSCRIPTION TRIGGERED - LISTENING FOR 5 SECONDS...]" }]);
+      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: "[AUDIO TRANSCRIPTION TRIGGERED - LISTENING FOR 5 SECONDS...]", rawText: "[AUDIO TRANSCRIPTION TRIGGERED - LISTENING FOR 5 SECONDS...]" }]);
       
-      // Auto-stop after 5 seconds
       setTimeout(() => {
         if (mediaRecorder.state === 'recording') {
             mediaRecorder.stop();
@@ -288,9 +423,9 @@ export default function App() {
       }, 5000);
 
     } catch (err) {
-      console.error(err);
+      triggerError();
       setIsRecording(false);
-      setMessages(prev => [...prev, { role: 'model', text: ">> FATAL: MIC_NOT_FOUND" }]);
+      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: ">> FATAL: MIC_NOT_FOUND", rawText: ">> FATAL: MIC_NOT_FOUND" }]);
     }
   };
 
@@ -305,7 +440,7 @@ export default function App() {
     }
 
     setIsEmailing(true);
-    setMessages(prev => [...prev, { role: 'model', text: ">> GENERATING EMAIL PAYLOAD WITH GROQ KERNEL..." }]);
+    setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: ">> GENERATING EMAIL PAYLOAD WITH GROQ KERNEL...", rawText: ">> GENERATING EMAIL PAYLOAD WITH GROQ KERNEL..." }]);
     
     if (!apiKey) {
       alert(">> GROQ API KEY REQUIRED");
@@ -314,23 +449,16 @@ export default function App() {
     }
 
     try {
-      const chatHistoryText = messages.map(m => `${m.role.toUpperCase()}: ${m.text}`).join('\n');
+      const chatHistoryText = messages.map(m => `${m.role.toUpperCase()}: ${m.rawText || m.text}`).join('\n');
       
       const apiMessages = [
         { role: 'system', content: `You are the NEXT-GEN AI SYSTEM compiling a session export email.
 Write a structured HTML email summarizing this session. 
-Use brutalist inline CSS styling for the HTML (black borders, white/yellow/blue backgrounds, uppercase headers, Courier/monospace font, sharp shadows 4px 4px 0px #000). 
-Include a proper subject line, greeting, structured body summarizing the session, and a closing signature.
-
-Format your response strictly as a JSON object:
-{
-  "subject": "Email Subject",
-  "html": "<html>...</html>"
-}` },
+Use brutalist inline CSS styling for the HTML. Format strictly as JSON { "subject": "...", "html": "..." }` },
         { role: 'user', content: `Session Data:\n${chatHistoryText}` }
       ];
 
-      const inferenceRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -340,21 +468,14 @@ Format your response strictly as a JSON object:
         })
       });
 
-      if (!inferenceRes.ok) {
-         const errBody = await inferenceRes.json().catch(()=>({}));
-         throw new Error(errBody.error?.message || `HTTP ${inferenceRes.status}`);
-      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      const inferenceData = await inferenceRes.json();
-      const emailDataStr = inferenceData.choices[0].message.content;
+      const data = await res.json();
+      const emailJson = JSON.parse(data.choices[0].message.content.match(/\{[\s\S]*\}/)[0]);
 
-      const jsonMatch = emailDataStr.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("Format error from AI synthesis.");
-      const emailJson = JSON.parse(jsonMatch[0]);
+      setMessages(prev => { const n=[...prev]; n.pop(); return [...n, { id: Date.now().toString(), role: 'model', text: ">> INITIATING_GMAIL_UPLINK...", rawText: ">> INITIATING_GMAIL_UPLINK..." }]; });
 
-      setMessages(prev => [...prev.slice(0, -1), { role: 'model', text: ">> INITIATING_GMAIL_UPLINK..." }]);
-
-      const res = await fetch('/api/export-email', {
+      const emailRes = await fetch('/api/export-email', {
          method: 'POST',
          headers: { 'Content-Type': 'application/json' },
          body: JSON.stringify({
@@ -364,31 +485,46 @@ Format your response strictly as a JSON object:
          })
       });
       
-      const result = await res.json();
+      const result = await emailRes.json();
       if (result.success) {
-         setMessages(prev => [...prev.slice(0, -1), { role: 'model', text: `>> GMAIL_TRANSMISSION_SUCCESS! TARGET: [${emailTarget}]` }]);
+         setMessages(prev => { const n=[...prev]; n.pop(); return [...n, { id: Date.now().toString(), role: 'model', text: `>> GMAIL_TRANSMISSION_SUCCESS! TARGET: [<span class="math-inline">\{emailTarget\}\]\`, rawText\: \`\>\> GMAIL\_TRANSMISSION\_SUCCESS\! TARGET\: \[</span>{emailTarget}]` }]; });
       } else {
          throw new Error(result.error);
       }
     } catch(err: any) {
-      console.error(err);
-      setMessages(prev => [...prev.slice(0, -1), { role: 'model', text: `>> GMAIL_TRANSMISSION_FAILED // ${err.message || String(err)}` }]);
+      triggerError();
+      setMessages(prev => { const n=[...prev]; n.pop(); return [...n, { id: Date.now().toString(), role: 'model', text: `>> GMAIL_TRANSMISSION_FAILED // <span class="math-inline">\{err\.message || String\(err\)\}\`, rawText\: \`\>\> GMAIL\_TRANSMISSION\_FAILED // </span>{err.message || String(err)}` }]; });
     } finally {
       setIsEmailing(false);
     }
   };
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-12px)]">
+    <div className={`flex flex-col min-h-[calc(100vh-12px)] ${isErrorGlitching ? 'glitch' : ''}`}>
+      {scanlineEnabled && <div className="scanlines"></div>}
       {/* Header Section */}
-      <header className="bg-[#FFE600] border-black border-b-[3px] p-4 flex justify-between items-center flex-wrap gap-4">
+      <header className="bg-[#FFE600] border-black border-b-[3px] p-4 flex justify-between items-center gap-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-black tracking-tighter uppercase m-0 leading-tight">
             NEXT-GEN AI ASSISTANT SYSTEM
           </h1>
-          <span className="inline-block bg-white border-[3px] border-black px-3 py-1 text-xs font-bold uppercase mt-1">
-            KERNEL: GROQ / LLAMA-3.3-70B
-          </span>
+          <div className="flex gap-2 flex-wrap items-center mt-2">
+            <span className="inline-block bg-white border-[3px] border-black px-3 py-1 text-[0.65rem] font-bold uppercase">
+              KERNEL: GROQ / LLAMA-3.3-70B
+            </span>
+            <span className="inline-block bg-black text-white border-[3px] border-black px-3 py-1 text-[0.65rem] font-bold uppercase">
+              SESSION: {formatTime(sessionTime)}
+            </span>
+            <span className="inline-block bg-white border-[3px] border-black px-3 py-1 text-[0.65rem] font-bold uppercase">
+              TOKENS: {getTokenCount()}/4096
+            </span>
+            <button onClick={() => setIsDarkMode(!isDarkMode)} className="bg-white hover:bg-black hover:text-white border-[3px] border-black px-3 py-1 text-[0.65rem] font-bold uppercase cursor-pointer">
+              {isDarkMode ? 'LIGHT_MODE' : 'DARK_MODE'}
+            </button>
+            <button onClick={() => setScanlineEnabled(!scanlineEnabled)} className="bg-white hover:bg-[#FF2D00] hover:text-white border-[3px] border-black px-3 py-1 text-[0.65rem] font-bold uppercase cursor-pointer">
+              SCANLINE: {scanlineEnabled ? 'ON' : 'OFF'}
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <input 
@@ -405,7 +541,7 @@ Format your response strictly as a JSON object:
       </header>
 
       {/* Navigation Tabs */}
-      <nav className="grid grid-cols-2 md:grid-cols-4 bg-black gap-[3px] border-black border-b-[3px]">
+      <nav className="grid grid-cols-2 md:grid-cols-4 bg-black gap-[3px] border-black border-b-[3px] relative z-10">
         <NavTab 
           active={activeMode === 'RESEARCH'} 
           onClick={() => setActiveMode('RESEARCH')}
@@ -428,7 +564,7 @@ Format your response strictly as a JSON object:
         />
       </nav>
 
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[350px_1fr]">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[350px_1fr] relative z-10">
         {/* Sidebar / Controls */}
         <section className="bg-white border-black border-r-[3px] p-5 flex flex-col gap-5 overflow-y-auto">
           <div className="flex flex-col gap-3">
@@ -449,18 +585,53 @@ Format your response strictly as a JSON object:
               className="border-[3px] border-black p-3 bg-[#E5E5E5] focus:outline-none h-36 font-mono text-sm uppercase resize-none"
             />
           </div>
-
-          {activeMode === 'KNOWLEDGE' && knowledgeTrail.length > 0 && (
-            <div className="flex flex-col gap-2">
-               <label className="font-black uppercase text-[0.8rem]">KNOWLEDGE_TRAIL:</label>
-               <div className="flex flex-col gap-1">
-                  {knowledgeTrail.map(k => (
-                    <div key={k.id} className="border-l-4 border-[#0047FF] bg-gray-50 p-2 text-[0.65rem] font-bold">
-                       <span className="opacity-50">[{k.timestamp}]</span> {k.subject}
-                    </div>
-                  ))}
+          
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-col gap-1">
+               <label className="font-black uppercase text-[0.65rem]">OUTPUT_LANG:</label>
+               <select value={outputLang} readOnly onChange={(e) => setOutputLang(e.target.value)} className="border-[3px] border-black p-1 bg-white text-[0.65rem] font-bold uppercase focus:outline-none cursor-pointer">
+                  {['English', 'Spanish', 'French', 'German', 'Hindi', 'Arabic', 'Japanese'].map(l => <option key={l} value={l}>{l}</option>)}
+               </select>
+            </div>
+            <div className="flex flex-col gap-1">
+               <label className="font-black uppercase text-[0.65rem]">STREAM_SPEED:</label>
+               <div className="flex gap-1 flex-1">
+                  <button onClick={() => setStreamSpeed(50)} className={`flex-1 border-[3px] border-black text-[0.55rem] font-bold ${streamSpeed === 50 ? 'bg-[#FFE600]' : 'bg-white hover:bg-gray-100'}`}>SLW</button>
+                  <button onClick={() => setStreamSpeed(20)} className={`flex-1 border-[3px] border-black text-[0.55rem] font-bold ${streamSpeed === 20 ? 'bg-[#FFE600]' : 'bg-white hover:bg-gray-100'}`}>NRM</button>
+                  <button onClick={() => setStreamSpeed(0)} className={`flex-1 border-[3px] border-black text-[0.55rem] font-bold ${streamSpeed === 0 ? 'bg-[#FF2D00] text-white' : 'bg-white hover:bg-gray-100'}`}>FST</button>
                </div>
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+             <button onClick={exportSession} className="border-[3px] border-black p-2 bg-black hover:bg-[#0047FF] text-white text-[0.65rem] font-bold uppercase cursor-pointer active:translate-y-1">EXPORT_SESSION</button>
+             <button onClick={loadHistory} className="border-[3px] border-black p-2 bg-white hover:bg-[#FFE600] text-black text-[0.65rem] font-bold uppercase cursor-pointer active:translate-y-1">LOAD_HISTORY</button>
+          </div>
+
+          {pinnedMessageIds.length > 0 && (
+             <div className="flex flex-col gap-2 mt-4 p-3 border-[3px] border-black bg-gray-50">
+                <label className="font-black uppercase text-[0.8rem] bg-black text-[#FFE600] px-2 py-1 inline-block self-start">PINNED_NODES:</label>
+                <div className="flex flex-col gap-2 font-mono mt-2">
+                  {messages.filter(m => pinnedMessageIds.includes(m.id)).map(m => (
+                     <div key={m.id} className="border-l-[6px] border-[#FF2D00] p-2 bg-[#FFE600] text-[0.65rem] text-black leading-tight truncate">
+                        {m.text}
+                     </div>
+                  ))}
+                </div>
+             </div>
+          )}
+
+          {activeMode === 'KNOWLEDGE' && knowledgeTrail.length > 0 && (
+             <div className="flex flex-col gap-2">
+                <label className="font-black uppercase text-[0.8rem]">KNOWLEDGE_TRAIL:</label>
+                <div className="flex flex-col gap-1">
+                   {knowledgeTrail.map(k => (
+                     <div key={k.id} className="border-l-4 border-[#0047FF] bg-gray-50 p-2 text-[0.65rem] font-bold">
+                        <span className="opacity-50">[{k.timestamp}]</span> {k.subject}
+                     </div>
+                   ))}
+                </div>
+             </div>
           )}
 
           {activeMode === 'WORKFLOW' && activeWorkflow.length > 0 && (
@@ -500,8 +671,10 @@ Format your response strictly as a JSON object:
                  {isRecording ? 'LISTENING...' : 'VOICE_STT'}
               </button>
             </div>
+            <button onClick={haltTTS} className="border-[3px] border-black p-2 bg-black text-[#FFE600] font-bold text-[0.7rem] uppercase">
+               [X] HALT_AUDIO
+            </button>
           </div>
-
 
           <button 
             onClick={handleSend}
@@ -511,13 +684,6 @@ Format your response strictly as a JSON object:
             INITIALIZE_AI_SYNTHESIS
           </button>
 
-          <div className="mt-auto border-[3px] border-dashed border-black p-3 text-[0.7rem] bg-gray-50">
-            <strong>SESSION_LOG:</strong><br />
-            [10:45:01] System boot successful.<br />
-            [10:45:10] API handshake complete.<br />
-            {isTyping && <span className="text-[#FF2D00]">[SYSTEM] Processing packet...</span>}
-            {thinkingProcess && <div className="mt-2 text-[0.65rem] italic opacity-60">REASONING: {thinkingProcess.substring(0, 50)}...</div>}
-          </div>
         </section>
 
         {/* Terminal Output */}
@@ -545,31 +711,79 @@ Format your response strictly as a JSON object:
               {[...messages].reverse().map((m, reverseIdx) => {
                 const i = messages.length - 1 - reverseIdx;
                 return (
-                <div key={i} className="flex flex-col gap-2">
-                   <div className="flex items-center gap-2">
+                <div key={m.id} className="flex flex-col gap-2">
+                   <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-black text-xs uppercase">{m.role === 'user' ? '>_USER' : '>_AI_SYSTEM'}</span>
+                      {m.metadata?.tone && (
+                         <span className={`text-[0.55rem] font-black border border-black px-1 uppercase ${m.metadata.tone.includes('URGENT') || m.metadata.tone.includes('ANXIOUS') ? 'bg-[#FF2D00] text-white' : 'bg-[#FFE600] text-black'}`}>
+                            [TONE: {m.metadata.tone}]
+                         </span>
+                      )}
                       <div className="h-[1px] flex-1 bg-black opacity-10"></div>
                    </div>
                    <div className={`p-4 border-l-[6px] relative ${m.role === 'user' ? 'border-[#FFE600] bg-gray-50' : 'border-[#0047FF] bg-white'}`}>
                       {m.role === 'model' && i === messages.length - 1 && isTyping && (
                         <span className="absolute right-2 top-2 w-2 h-4 bg-black animate-pulse"></span>
                       )}
-                        <div className="markdown-body text-[0.85rem] leading-[1.4] whitespace-pre-wrap font-mono">
-                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                             {m.text || (i === messages.length - 1 && m.role === 'model' ? '...' : '')}
-                           </ReactMarkdown>
-                           {i === messages.length - 1 && m.role === 'model' && isTyping && (
-                             <span className="inline-block w-2 h-4 bg-black ml-1 align-middle animate-pulse"></span>
-                           )}
-                        </div>
+                      <div className="markdown-body text-[0.85rem] leading-[1.4] whitespace-pre-wrap font-mono relative z-10">
+                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                           {m.text || (i === messages.length - 1 && m.role === 'model' ? '...' : '')}
+                         </ReactMarkdown>
+                         {i === messages.length - 1 && m.role === 'model' && isTyping && (
+                           <span className="inline-block w-2 h-4 bg-black ml-1 align-middle animate-pulse"></span>
+                         )}
+                      </div>
+
+                      {/* Display Auto Tagger and Confidence */}
+                      {m.metadata?.tags && (
+                         <div className="mt-3 text-[0.65rem] font-bold text-[#0047FF] flex gap-2 flex-wrap">
+                           {m.metadata.tags.map((t, idx) => <span key={idx}>{t}</span>)}
+                         </div>
+                      )}
                       
+                      {m.metadata?.confidence !== undefined && (
+                         <div className="mt-2 text-[0.55rem] font-black uppercase flex items-center gap-2 max-w-xs">
+                           <span className="w-24">CONFIDENCE: {m.metadata.confidence}%</span>
+                           <div className="flex-1 h-3 border-2 border-black bg-gray-200">
+                             <div className={`h-full ${m.metadata.confidence > 80 ? 'bg-green-500' : (m.metadata.confidence > 50 ? 'bg-[#FFE600]' : 'bg-[#FF2D00]')}`} style={{width: `${m.metadata.confidence}%`}}></div>
+                           </div>
+                         </div>
+                      )}
+
+                      {/* Follow-up Prompts */}
+                      {m.metadata?.suggestions && m.metadata.suggestions.length > 0 && (
+                         <div className="mt-4 flex flex-col gap-2">
+                            <span className="text-[0.55rem] font-bold opacity-50 uppercase">SUGGESTED_QUERIES:</span>
+                            <div className="flex flex-wrap gap-2">
+                               {m.metadata.suggestions.map((s, idx) => (
+                                  <button key={idx} onClick={() => handleFollowUp(s)} className="text-[0.65rem] bg-white border-2 border-black px-2 py-1 font-bold hover:bg-[#FFE600] active:translate-y-1 text-left">
+                                    {s}
+                                  </button>
+                               ))}
+                            </div>
+                         </div>
+                      )}
+
+                      {/* Utility Action Bar */}
                       {m.role === 'model' && m.text && (
-                        <div className="mt-4 pt-3 border-t border-black/10 flex gap-4">
+                        <div className="mt-4 pt-3 border-t-2 border-black border-dashed flex gap-2 flex-wrap relative z-10">
                            <button 
                             onClick={() => playTTS(m.text)}
-                            className="bg-black text-white text-[0.6rem] px-2 py-1 font-bold hover:bg-[#0047FF]"
+                            className="bg-black text-white border-2 border-black text-[0.6rem] px-2 py-1 font-bold hover:bg-[#0047FF] active:translate-y-1"
                            >
-                             [ PLAY_AUDIO_DATA ]
+                             [ READ_ALOUD ]
+                           </button>
+                           <button 
+                            onClick={() => copyMessage(m.id, m.text)}
+                            className="bg-white text-black border-2 border-black text-[0.6rem] px-2 py-1 font-bold hover:bg-[#FFE600] active:translate-y-1"
+                           >
+                             {copiedId === m.id ? '[ COPIED_TO_BUFFER ]' : '[ COPY ]'}
+                           </button>
+                           <button 
+                            onClick={() => togglePin(m.id)}
+                            className="bg-white text-black border-2 border-black text-[0.6rem] px-2 py-1 font-bold hover:bg-[#FFE600] active:translate-y-1"
+                           >
+                             {pinnedMessageIds.includes(m.id) ? '[ UNPIN_NODE ]' : '[ PIN_NODE ]'}
                            </button>
                         </div>
                       )}
@@ -579,7 +793,7 @@ Format your response strictly as a JSON object:
             </div>
           </div>
 
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 relative z-10">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <button className="bg-[#0047FF] hover:bg-black text-white p-3 border-[3px] border-black font-bold text-center text-sm cursor-pointer active:translate-y-1">
                 [+] SAVE_TO_KNOWLEDGE_TRAIL
@@ -605,42 +819,6 @@ Format your response strictly as a JSON object:
         </section>
       </div>
 
-      {/* Info Footer */}
-      <footer className="grid grid-cols-1 md:grid-cols-3 border-black border-t-[3px] bg-black gap-[3px]">
-        <div className="bg-white p-3 text-[0.75rem] font-bold">
-          TOKEN_COUNT: <span className="text-[#0047FF]">2,455</span>
-        </div>
-        <div className="bg-white p-3 text-[0.75rem] font-bold">
-          LATENCY: <span className="text-[#FF2D00]">142ms</span>
-        </div>
-        <div className="bg-white p-3 text-[0.75rem] font-bold">
-          ACTIVE_THREAD: <span className="text-[#0047FF]">SYNTHESIS_09X</span>
-        </div>
-      </footer>
-
-      {/* Live Session Overlay */}
-      <AnimatePresence>
-        {liveSessionActive && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/80 z-[100] grid place-items-center p-4"
-          >
-             <div className="bg-white border-[6px] border-black p-10 max-w-md w-full text-center artistic-shadow">
-                <AlertCircle size={64} className="mx-auto mb-6 text-[#FF2D00]" />
-                <h3 className="text-2xl font-black mb-4 uppercase tracking-tighter">LIVE SESSION INITIALIZED</h3>
-                <p className="text-sm mb-8 font-bold uppercase tracking-widest opacity-60">System is capture processing real-time bio-audio packets.</p>
-                <button 
-                  onClick={() => setLiveSessionActive(false)}
-                  className="w-full border-[3px] border-black bg-[#FF2D00] text-white p-4 font-bold uppercase artistic-shadow-active"
-                >
-                  TERMINATE CONNECTION
-                </button>
-             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }
