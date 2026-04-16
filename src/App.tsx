@@ -816,11 +816,6 @@ Use brutalist inline CSS styling for the HTML. Format strictly as JSON { "subjec
           label="KNOWLEDGE_COMPANION"
         />
         <NavTab
-          active={activeMode === 'KNOWLEDGE'}
-          onClick={() => setActiveMode('KNOWLEDGE')}
-          label="KNOWLEDGE_COMPANION"
-        />
-        <NavTab
           active={activeMode === 'DEBATE'}
           onClick={() => setActiveMode('DEBATE')}
           label="DEBATE_MODE"
