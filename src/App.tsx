@@ -6,21 +6,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { 
-  Search, 
-  MapPin, 
-  MessageSquare, 
-  Zap, 
-  Volume2, 
-  Mic, 
-  Terminal, 
-  Layers, 
-  History, 
-  Play, 
-  Square,
-  AlertCircle
-} from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { AlertCircle } from 'lucide-react';
+
 
 type Mode = 'RESEARCH' | 'SUPPORT' | 'WORKFLOW' | 'KNOWLEDGE';
 
@@ -53,7 +40,29 @@ interface KnowledgeTrailItem {
 }
 
 export default function App() {
-  const [apiKey, setApiKey] = useState(process.env.GROQ_API_KEY || '');
+  const [apiKey, setApiKey] = useState(localStorage.getItem('GROQ_API_KEY') || '');
+  const [showAuthPopup, setShowAuthPopup] = useState(!localStorage.getItem('GROQ_API_KEY'));
+  const [authInput, setAuthInput] = useState('');
+  const [authError, setAuthError] = useState(false);
+
+  const handleAuthSubmit = () => {
+    if (!authInput.trim()) {
+      setAuthError(true);
+      return;
+    }
+    localStorage.setItem('GROQ_API_KEY', authInput.trim());
+    setApiKey(authInput.trim());
+    setShowAuthPopup(false);
+    setAuthError(false);
+  };
+
+  const handleResetApiKey = () => {
+    localStorage.removeItem('GROQ_API_KEY');
+    setApiKey('');
+    setAuthInput('');
+    setShowAuthPopup(true);
+  };
+
   const [activeMode, setActiveMode] = useState<Mode>('RESEARCH');
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -392,7 +401,7 @@ export default function App() {
           const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
             method: "POST",
             headers: {
-              "Authorization": `Bearer ${process.env.GROQ_API_KEY}`
+              "Authorization": `Bearer ${apiKey}`
             },
             body: formData
           });
@@ -502,6 +511,41 @@ Use brutalist inline CSS styling for the HTML. Format strictly as JSON { "subjec
   return (
     <div className={`flex flex-col min-h-[calc(100vh-12px)] ${isErrorGlitching ? 'glitch' : ''}`}>
       {scanlineEnabled && <div className="scanlines"></div>}
+      
+      {showAuthPopup && (
+        <div className="fixed inset-0 bg-black/90 z-[9999] flex items-center justify-center p-4">
+          <div className="bg-white border-[6px] border-black p-8 max-w-lg w-full flex flex-col gap-6" style={{boxShadow: '12px 12px 0px #000'}}>
+             <div>
+                <h2 className="text-2xl font-black uppercase m-0 leading-tight">KERNEL_AUTHENTICATION_REQUIRED</h2>
+                <p className="text-sm font-bold uppercase opacity-60 mt-2">ENTER GROQ API KEY TO INITIALIZE SYSTEM</p>
+             </div>
+             
+             <div className="flex flex-col gap-2">
+                <input 
+                   type="password"
+                   value={authInput}
+                   onChange={(e) => { setAuthInput(e.target.value); setAuthError(false); }}
+                   placeholder="sk-..."
+                   className="w-full border-[4px] border-black p-4 font-mono text-lg focus:outline-none focus:bg-[#E5E5E5] rounded-none"
+                />
+                {authError && <span className="text-[#FF2D00] text-xs font-bold uppercase animate-pulse">ERROR: NULL_KEY_DETECTED</span>}
+             </div>
+
+             <button 
+                onClick={handleAuthSubmit}
+                className="w-full bg-[#FFE600] border-[4px] border-black p-4 font-black uppercase text-xl hover:bg-black hover:text-[#FFE600] transition-colors active:translate-y-1 cursor-pointer"
+                style={{boxShadow: '6px 6px 0px #000'}}
+             >
+                [AUTHENTICATE]
+             </button>
+
+             <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="text-center text-xs font-bold uppercase text-gray-500 hover:text-black mt-2 inline-block w-full">
+                GET API KEY → console.groq.com
+             </a>
+          </div>
+        </div>
+      )}
+
       {/* Header Section */}
       <header className="bg-[#FFE600] border-black border-b-[3px] p-4 flex justify-between items-center gap-4">
         <div>
@@ -527,13 +571,12 @@ Use brutalist inline CSS styling for the HTML. Format strictly as JSON { "subjec
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <input 
-            type="password" 
-            placeholder="GROQ_API_KEY..." 
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            className="border-[3px] border-black p-2 font-mono text-xs w-48 shadow-none focus:outline-none focus:bg-white"
-          />
+          <button 
+             onClick={handleResetApiKey}
+             className="bg-white hover:bg-black hover:text-[#FFE600] text-black border-[3px] border-black px-3 py-2 text-xs font-bold uppercase cursor-pointer transition-colors active:translate-y-1"
+          >
+             [RESET_API_KEY]
+          </button>
           <div className="hidden xl:block bg-[#FF2D00] text-white border-[3px] border-black px-3 py-2 text-xs font-bold uppercase">
             ENCRYPTED CONNECTION
           </div>
