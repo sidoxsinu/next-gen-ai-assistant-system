@@ -1,0 +1,18 @@
+{
+  "name": "NEXT-GEN AI ASSISTANT SYSTEM",
+  "description": "A brutalist, high-performance AI assistant multi-tool powered by Gemini 3. Includes Research, Support, Workflow, and Knowledge modules with multimodal capabilities.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "AI_CHATS",
+    "IMAGE_GENERATION",
+    "SEARCH_GROUNDING",
+    "MAPS_GROUNDING",
+    "TTS",
+    "STT",
+    "THINKING_MODE",
+    "LIVE_API"
+  ]
+}

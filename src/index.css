@@ -1,0 +1,36 @@
+@import url('https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-mono: "Courier Prime", "Courier New", Courier, monospace;
+}
+
+@layer utilities {
+  .artistic-border {
+    @apply border-[3px] border-black;
+  }
+  .artistic-shadow {
+    box-shadow: 6px 6px 0px #000;
+  }
+  .artistic-shadow-active:active {
+    box-shadow: 2px 2px 0px #000;
+    transform: translate(4px, 4px);
+  }
+}
+
+* {
+  box-sizing: border-box;
+  border-radius: 0 !important;
+}
+
+body {
+  @apply font-mono bg-[#E5E5E5] text-black;
+  margin: 0;
+  padding: 0;
+  border: 6px solid #000;
+  min-height: 100vh;
+}
+
+::selection {
+  @apply bg-[#FFE600] text-black;
+}
