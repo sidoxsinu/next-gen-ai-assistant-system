@@ -12,7 +12,6 @@ import {
   MapPin, 
   MessageSquare, 
   Zap, 
-  Image as ImageIcon, 
   Volume2, 
   Mic, 
   Terminal, 
@@ -56,7 +55,6 @@ export default function App() {
   const [isTyping, setIsTyping] = useState(false);
   const [thinkingProcess, setThinkingProcess] = useState<string>('');
   const [liveSessionActive, setLiveSessionActive] = useState(false);
-  const [imageSize, setImageSize] = useState<'1K' | '2K' | '4K'>('1K');
   const [isRecording, setIsRecording] = useState(false);
   
   // Feature states
@@ -210,13 +208,6 @@ export default function App() {
     setActiveWorkflow(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
   };
 
-  const generateImage = async (prompt: string) => {
-    setIsTyping(true);
-    setTimeout(() => {
-      setMessages(prev => [...prev, { role: 'model', text: `>> FATAL EXCEPTION: [VISUAL_GEN_UNAVAILABLE_ON_GROQ_KERNEL]` }]);
-      setIsTyping(false);
-    }, 500);
-  };
 
   const playTTS = async (text: string) => {
     const synth = window.speechSynthesis;
@@ -511,29 +502,6 @@ Format your response strictly as a JSON object:
             </div>
           </div>
 
-          <div className="flex flex-col gap-2">
-             <label className="font-black uppercase text-[0.8rem]">IMAGE_GENERATION:</label>
-             <div className="flex gap-1 mb-2">
-                {(['1K', '2K', '4K'] as const).map(s => (
-                  <button 
-                    key={s} 
-                    onClick={() => setImageSize(s)}
-                    className={`flex-1 border-[3px] border-black p-1 text-[0.6rem] font-bold ${imageSize === s ? 'bg-[#FFE600]' : 'bg-white'}`}
-                  >
-                    {s}
-                  </button>
-                ))}
-             </div>
-             <button 
-                onClick={() => {
-                  const p = prompt("ENTER IMAGE PROMPT:");
-                  if (p) generateImage(p);
-                }}
-                className="bg-white border-[3px] border-black p-3 text-sm font-bold uppercase active:translate-y-1"
-             >
-                INITIALIZE_VISUAL_GEN
-             </button>
-          </div>
 
           <button 
             onClick={handleSend}
@@ -586,12 +554,6 @@ Format your response strictly as a JSON object:
                       {m.role === 'model' && i === messages.length - 1 && isTyping && (
                         <span className="absolute right-2 top-2 w-2 h-4 bg-black animate-pulse"></span>
                       )}
-                      {m.type === 'image' ? (
-                        <div className="space-y-3">
-                           <p className="font-bold underline mb-2 tracking-widest uppercase">{m.text}</p>
-                           <img src={m.data} alt="Generated" className="border-[3px] border-black w-full h-auto" referrerPolicy="no-referrer" />
-                        </div>
-                      ) : (
                         <div className="markdown-body text-[0.85rem] leading-[1.4] whitespace-pre-wrap font-mono">
                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
                              {m.text || (i === messages.length - 1 && m.role === 'model' ? '...' : '')}
@@ -600,7 +562,6 @@ Format your response strictly as a JSON object:
                              <span className="inline-block w-2 h-4 bg-black ml-1 align-middle animate-pulse"></span>
                            )}
                         </div>
-                      )}
                       
                       {m.role === 'model' && m.text && (
                         <div className="mt-4 pt-3 border-t border-black/10 flex gap-4">
