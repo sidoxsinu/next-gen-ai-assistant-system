@@ -71,7 +71,7 @@ export default function App() {
 
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      scrollRef.current.scrollTop = 0;
     }
   }, [messages, thinkingProcess, isTyping]);
 
@@ -96,13 +96,13 @@ export default function App() {
     try {
       let fullText = '';
       
-      let systemPrompt = "You are a helpful AI assistant.";
-      if (activeMode === 'RESEARCH') systemPrompt = "Act as a Research Assistant. Provide a structured summary with key points and source suggestions.";
-      if (activeMode === 'SUPPORT') systemPrompt = "You are an Intelligent Customer Support Chatbot. Handle queries professionally, escalate when needed, and maintain context.";
-      if (activeMode === 'WORKFLOW') systemPrompt = "Break this task/workflow into actionable steps. FORMAT YOUR RESPONSE AS A JSON ARRAY OF OBJECTS with fields: id, label, priority (HIGH/MEDIUM/LOW). Also include a clear text explanation before the JSON.";
+      let systemPrompt = "You are a helpful AI assistant. Respond in clean, complete, well-formed sentences. DO NOT use markdown formatting like **, ##, or bullet points. Output plain text only.";
+      if (activeMode === 'RESEARCH') systemPrompt = "Act as a Research Assistant. Provide a structured summary with key points and source suggestions. Respond in clean, complete, well-formed sentences. Avoid markdown formatting like ** or ##.";
+      if (activeMode === 'SUPPORT') systemPrompt = "You are an Intelligent Customer Support Chatbot. Handle queries professionally, escalate when needed, and maintain context. Respond in clean, complete sentences without markdown formatting.";
+      if (activeMode === 'WORKFLOW') systemPrompt = "Break this task/workflow into actionable steps. FORMAT YOUR RESPONSE AS A JSON ARRAY OF OBJECTS with fields: id, label, priority (HIGH/MEDIUM/LOW). Also include a clear text explanation before the JSON, without markdown formatting.";
       if (activeMode === 'KNOWLEDGE') {
         const context = `User Preferences: ${userPreferences.join(', ')}. Knowledge Trail: ${knowledgeTrail.map(k => k.subject).join(' -> ')}.`;
-        systemPrompt = `${context}\n\nAct as a Personal Knowledge Companion. Explore topics, suggest related areas, and detect any new user preferences or core subjects explicitly.`;
+        systemPrompt = `${context}\n\nAct as a Personal Knowledge Companion. Explore topics, suggest related areas, and detect any new user preferences. Respond in clean, complete, well-formed sentences. Avoid markdown formatting.`;
       }
 
       // Convert messages to Groq format
@@ -121,7 +121,8 @@ export default function App() {
         body: JSON.stringify({
           model: "llama-3.3-70b-versatile",
           messages: apiMessages,
-          stream: true
+          stream: true,
+          max_tokens: 4096
         })
       });
 
@@ -131,19 +132,28 @@ export default function App() {
       }
 
       const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
+      const decoder = new TextDecoder("utf-8");
       
       if (reader) {
+        let buffer = '';
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          const chunkStr = decoder.decode(value, { stream: true });
-          const lines = chunkStr.split('\\n').filter(line => line.trim() !== '');
+          // Accumulate chunk in buffer
+          buffer += decoder.decode(value, { stream: true });
+          // Split by newline
+          const lines = buffer.split('\n');
+          // Keep the last partial line in the buffer
+          buffer = lines.pop() || '';
+          
           for (const line of lines) {
-            if (line === 'data: [DONE]') break;
-            if (line.startsWith('data: ')) {
+            const trimmedLine = line.trim();
+            if (!trimmedLine) continue;
+            if (trimmedLine === 'data: [DONE]') break;
+            
+            if (trimmedLine.startsWith('data: ')) {
                try {
-                 const data = JSON.parse(line.slice(6));
+                 const data = JSON.parse(trimmedLine.slice(6));
                  if (data.choices && data.choices[0].delta && data.choices[0].delta.content) {
                     fullText += data.choices[0].delta.content;
                     setMessages(prev => {
@@ -152,7 +162,9 @@ export default function App() {
                       return newMsgs;
                     });
                  }
-               } catch(e) {}
+               } catch(e) {
+                 console.error("Parse error on streaming chunk:", trimmedLine, e);
+               }
             }
           }
         }
@@ -547,7 +559,7 @@ Format your response strictly as a JSON object:
               <span>GEMINI_OUTPUT_STREAM</span>
               <span>BUFFER: {messages.length}/256</span>
             </div>
-            <div className="flex-1 overflow-y-auto p-5 flex flex-col-reverse gap-8" ref={scrollRef}>
+            <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-8" ref={scrollRef}>
               {messages.length === 0 && (
                 <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-4 opacity-30 italic">
                   <span>_READY_FOR_SYNTHESIS_STREAM_</span>

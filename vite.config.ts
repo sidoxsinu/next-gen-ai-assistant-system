@@ -14,7 +14,7 @@ export default defineConfig(({mode}) => {
       {
         name: 'express-email-api',
         configureServer(server) {
-          server.middlewares.use(express.json());
+          server.middlewares.use('/api', express.json());
           server.middlewares.use('/api/export-email', async (req, res, next) => {
             if (req.method !== 'POST') {
               return next();
@@ -65,10 +65,6 @@ export default defineConfig(({mode}) => {
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
-    },
-    server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      hmr: process.env.DISABLE_HMR !== 'true',
     },
   };
 });
