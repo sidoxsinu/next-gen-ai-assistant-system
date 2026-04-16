@@ -11,21 +11,7 @@ import { AlertCircle } from 'lucide-react';
 
 type Mode = 'RESEARCH' | 'SUPPORT' | 'WORKFLOW' | 'KNOWLEDGE' | 'DEBATE' | 'KNOWLEDGE_MAP';
 
-export interface KnowledgeNode {
-  id: string;
-  frequency: number;
-  firstSeenMs: number;
-  sourceMode: string;
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-}
 
-export interface KnowledgeLink {
-  source: string;
-  target: string;
-}
 
 interface Message {
   id: string;
@@ -41,8 +27,6 @@ interface Message {
     confidence?: number;
   };
   complexityMode?: 'ELI5' | 'EXPERT';
-  reasoningChain?: { step: number; title: string; detail: string }[];
-  isConstructingReasoning?: boolean;
   factCheckReport?: { claim: string; verdict: 'VERIFIED' | 'UNCERTAIN' | 'DISPUTED'; reason: string }[];
   isFactChecking?: boolean;
   isFactCheckOpen?: boolean;
@@ -130,16 +114,7 @@ export default function App() {
   const [showConfig, setShowConfig] = useState(false);
   const [smtpError, setSmtpError] = useState('');
 
-  // Knowledge Map States
-  const [knowledgeGraph, setKnowledgeGraph] = useState<{ nodes: KnowledgeNode[], links: KnowledgeLink[] }>(() => {
-    try {
-      const saved = localStorage.getItem('KNOWLEDGE_MAP_STATE');
-      return saved ? JSON.parse(saved) : { nodes: [], links: [] };
-    } catch {
-      return { nodes: [], links: [] };
-    }
-  });
-  const [graphFrozen, setGraphFrozen] = useState(false);
+
 
   const saveSmtpCredentials = () => {
     localStorage.setItem('SMTP_EMAIL', smtpEmail);
@@ -172,9 +147,7 @@ export default function App() {
     }
   }, [messages]);
 
-  useEffect(() => {
-    localStorage.setItem('KNOWLEDGE_MAP_STATE', JSON.stringify(knowledgeGraph));
-  }, [knowledgeGraph]);
+
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -319,67 +292,6 @@ export default function App() {
 
   const handleSend = () => sendCommand(input);
 
-  const extractAndAddTopics = async (sourceText: string, triggeringMode: string) => {
-    if (!apiKey || !sourceText.trim()) return;
-    try {
-      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-        body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          messages: [{
-            role: "system",
-            content: "Extract 2-3 single-word or short-phrase core topics from this text. Return only a comma-separated list, nothing else. No markdown, no prefixes, ALL CAPS."
-          }, { role: "user", content: sourceText }],
-          temperature: 0.1
-        })
-      });
-      const data = await res.json();
-      if (data.choices?.[0]?.message?.content) {
-        const rawKeywords = data.choices[0].message.content.split(',')
-          .map((k: string) => k.trim().toUpperCase().replace(/[^A-Z0-9\s-]/g, ''))
-          .filter((k: string) => k.length > 0 && k.length < 30);
-
-        setKnowledgeGraph(prev => {
-          const newNodes = [...prev.nodes];
-          const newLinks = [...prev.links];
-          const addedIds: string[] = [];
-
-          for (const kw of rawKeywords) {
-            const existing = newNodes.find(n => n.id === kw);
-            if (existing) {
-              existing.frequency += 1;
-            } else {
-              newNodes.push({
-                id: kw,
-                frequency: 1,
-                firstSeenMs: Date.now(),
-                sourceMode: triggeringMode,
-                x: Math.random() * 800,
-                y: Math.random() * 600,
-                vx: 0,
-                vy: 0
-              });
-            }
-            addedIds.push(kw);
-          }
-
-          for (let i = 0; i < addedIds.length; i++) {
-            for (let j = i + 1; j < addedIds.length; j++) {
-              const exists = newLinks.find(l => (l.source === addedIds[i] && l.target === addedIds[j]) || (l.source === addedIds[j] && l.target === addedIds[i]));
-              if (!exists) {
-                newLinks.push({ source: addedIds[i], target: addedIds[j] });
-              }
-            }
-          }
-          return { nodes: newNodes, links: newLinks };
-        });
-      }
-    } catch (e) {
-      console.error("Topic extraction failed", e);
-    }
-  };
-
   const sendCommand = async (commandStr: string) => {
     if (!commandStr.trim()) return;
     if (!apiKey) {
@@ -421,46 +333,6 @@ export default function App() {
         ...messages.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.rawText || m.text })),
         { role: 'user', content: commandStr }
       ];
-
-      // Reasoning Engine Fetch
-      setMessages(prev => prev.map(m => m.id === modelMsgId ? { ...m, isConstructingReasoning: true } : m));
-      try {
-        const reasoningRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-             model: "llama-3.3-70b-versatile",
-             messages: [
-                { role: 'system', content: "You are a reasoning engine. Break down your thinking process for the following query into exactly 5 clear sequential steps. Return ONLY a JSON array of 5 objects, each with keys: 'step' (number 1-5), 'title' (short 3-word max label in CAPS), and 'detail' (one sentence explanation). Nothing else, no markdown, no preamble." },
-                ...messages.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.rawText || m.text })),
-                { role: 'user', content: commandStr }
-             ],
-             temperature: 0.2
-          })
-        });
-        
-        if (reasoningRes.ok) {
-           const rData = await reasoningRes.json();
-           let rText = rData.choices[0].message.content.trim();
-           if (rText.startsWith("```json")) rText = rText.slice(7, -3).trim();
-           if (rText.startsWith("```")) rText = rText.slice(3, -3).trim();
-           const rChain = JSON.parse(rText);
-           if (Array.isArray(rChain) && rChain.length > 0) {
-              setMessages(prev => prev.map(m => m.id === modelMsgId ? { ...m, reasoningChain: rChain, isConstructingReasoning: false } : m));
-              await new Promise(r => setTimeout(r, 1600)); // Stagger delay matching CSS keys
-           } else {
-              setMessages(prev => prev.map(m => m.id === modelMsgId ? { ...m, isConstructingReasoning: false } : m));
-           }
-        } else {
-           setMessages(prev => prev.map(m => m.id === modelMsgId ? { ...m, isConstructingReasoning: false } : m));
-        }
-      } catch (err) {
-         console.error("Reasoning chain failed", err);
-         setMessages(prev => prev.map(m => m.id === modelMsgId ? { ...m, isConstructingReasoning: false } : m));
-      }
 
       const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
@@ -526,7 +398,6 @@ export default function App() {
         }
       }
 
-      extractAndAddTopics(fullRawText, activeMode);
 
       if (activeMode === 'KNOWLEDGE') {
         const newSubject = commandStr.split(' ').slice(0, 3).join(' ');
@@ -620,7 +491,6 @@ export default function App() {
 
       setDebateHistory(prev => [...prev, { agentA: textA, agentB: textB, verdict: textV }]);
 
-      extractAndAddTopics(`${textA} ${textB} ${textV}`, 'DEBATE');
 
     } catch (err: any) {
       console.error(err);
@@ -907,22 +777,9 @@ Use brutalist inline CSS styling for the HTML. Format strictly as JSON { "subjec
           onClick={() => setActiveMode('DEBATE')}
           label="DEBATE_MODE"
         />
-        <NavTab
-          active={activeMode === 'KNOWLEDGE_MAP'}
-          onClick={() => setActiveMode('KNOWLEDGE_MAP')}
-          label="KNOWLEDGE_MAP"
-        />
       </nav>
 
-      {activeMode === 'KNOWLEDGE_MAP' ? (
-        <KnowledgeMapRenderer
-          graph={knowledgeGraph}
-          setGraph={setKnowledgeGraph}
-          frozen={graphFrozen}
-          setFrozen={setGraphFrozen}
-          onClear={() => { }}
-        />
-      ) : activeMode === 'DEBATE' ? (
+      {activeMode === 'DEBATE' ? (
         <div className="flex-1 flex flex-col p-5 bg-[#E5E5E5] gap-4 overflow-y-auto">
           {/* Controls */}
           <div className="bg-white border-[3px] border-black p-5 flex flex-col gap-3">
@@ -1177,7 +1034,6 @@ Use brutalist inline CSS styling for the HTML. Format strictly as JSON { "subjec
                         {m.role === 'model' && i === messages.length - 1 && isTyping && (
                           <span className="absolute right-2 top-2 w-2 h-4 bg-black animate-pulse"></span>
                         )}
-                        <ReasoningChainViewer isConstructing={m.isConstructingReasoning} chain={m.reasoningChain} />
                         <div className="markdown-body text-[0.85rem] leading-[1.4] whitespace-pre-wrap font-mono relative z-10 mt-2">
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
                             {m.text || (i === messages.length - 1 && m.role === 'model' ? '...' : '')}
@@ -1355,397 +1211,6 @@ function NavTab({ active, onClick, label }: { active: boolean, onClick: () => vo
     >
       {label}
     </button>
-  );
-}
-
-function KnowledgeMapRenderer({
-  graph,
-  setGraph,
-  frozen,
-  setFrozen,
-  onClear,
-}: {
-  graph: { nodes: KnowledgeNode[], links: KnowledgeLink[] };
-  setGraph: React.Dispatch<React.SetStateAction<{ nodes: KnowledgeNode[], links: KnowledgeLink[] }>>;
-  frozen: boolean;
-  setFrozen: (f: boolean) => void;
-  onClear: () => void;
-}) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  const physicsRef = useRef<{ nodes: KnowledgeNode[], links: KnowledgeLink[] }>({ nodes: [], links: [] });
-
-  useEffect(() => {
-    const localNodes = physicsRef.current.nodes;
-    graph.nodes.forEach(gn => {
-      const existing = localNodes.find(n => n.id === gn.id);
-      if (existing) {
-        existing.frequency = gn.frequency;
-      } else {
-        localNodes.push({ ...gn, x: gn.x || Math.random() * 800, y: gn.y || Math.random() * 600, vx: 0, vy: 0 });
-      }
-    });
-    physicsRef.current.links = [...graph.links];
-  }, [graph]);
-
-  useEffect(() => {
-    if (frozen) {
-      setGraph(prev => ({
-        nodes: prev.nodes.map(n => {
-          const pn = physicsRef.current.nodes.find(ln => ln.id === n.id);
-          return pn ? { ...n, x: pn.x, y: pn.y, vx: pn.vx, vy: pn.vy } : n;
-        }),
-        links: prev.links
-      }));
-    }
-  }, [frozen]);
-
-  const pointerPos = useRef<{ x: number, y: number } | null>(null);
-  const draggedNode = useRef<KnowledgeNode | null>(null);
-  const [hoverData, setHoverData] = useState<{ node: KnowledgeNode, x: number, y: number } | null>(null);
-  const [highlightedId, setHighlightedId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const container = containerRef.current;
-    if (!canvas || !container) return;
-
-    const resize = () => {
-      canvas.width = container.clientWidth;
-      canvas.height = container.clientHeight;
-    };
-    resize();
-    window.addEventListener('resize', resize);
-
-    let animationId: number;
-
-    const draw = () => {
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      const w = canvas.width;
-      const h = canvas.height;
-
-      ctx.clearRect(0, 0, w, h);
-
-      // Draw Title Background Label
-      ctx.fillStyle = '#000';
-      ctx.font = 'bold 24px monospace';
-      ctx.globalAlpha = 0.05;
-      ctx.fillText('>_KNOWLEDGE_GRAPH_STREAM', 20, h - 20);
-      ctx.globalAlpha = 1;
-
-      const { nodes, links } = physicsRef.current;
-
-      if (!frozen) {
-        nodes.forEach(n => {
-          if (draggedNode.current && draggedNode.current.id === n.id) {
-            if (pointerPos.current) {
-              n.x = pointerPos.current.x;
-              n.y = pointerPos.current.y;
-            }
-            return;
-          }
-          let fx = (w / 2 - n.x) * 0.005;
-          let fy = (h / 2 - n.y) * 0.005;
-
-          nodes.forEach(n2 => {
-            if (n.id === n2.id) return;
-            const dx = n.x - n2.x;
-            const dy = n.y - n2.y;
-            const distSq = dx * dx + dy * dy || 1;
-            const dist = Math.sqrt(distSq);
-            if (dist < 300) {
-              const force = 1000 / distSq;
-              fx += (dx / dist) * force;
-              fy += (dy / dist) * force;
-            }
-          });
-
-          links.forEach(l => {
-            if (l.source === n.id || l.target === n.id) {
-              const otherId = l.source === n.id ? l.target : l.source;
-              const n2 = nodes.find(x => x.id === otherId);
-              if (n2) {
-                const dx = n2.x - n.x;
-                const dy = n2.y - n.y;
-                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-                const force = (dist - 150) * 0.02;
-                fx += (dx / dist) * force;
-                fy += (dy / dist) * force;
-              }
-            }
-          });
-
-          n.vx = (n.vx * 0.8) + fx;
-          n.vy = (n.vy * 0.8) + fy;
-          n.x += n.vx;
-          n.y += n.vy;
-
-          n.x = Math.max(50, Math.min(w - 50, n.x));
-          n.y = Math.max(50, Math.min(h - 50, n.y));
-        });
-      }
-
-      const connectedIds = new Set<string>();
-      if (highlightedId) {
-        connectedIds.add(highlightedId);
-        links.forEach(l => {
-          if (l.source === highlightedId) connectedIds.add(l.target);
-          if (l.target === highlightedId) connectedIds.add(l.source);
-        });
-      }
-
-      links.forEach(l => {
-        const s = nodes.find(n => n.id === l.source);
-        const t = nodes.find(n => n.id === l.target);
-        if (!s || !t) return;
-
-        const isFaded = highlightedId && !connectedIds.has(s.id) && !connectedIds.has(t.id);
-
-        ctx.beginPath();
-        ctx.moveTo(s.x, s.y);
-        ctx.lineTo(t.x, t.y);
-        ctx.strokeStyle = isFaded ? 'rgba(0,0,0,0.1)' : '#000';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        if (!isFaded) {
-          const angle = Math.atan2(t.y - s.y, t.x - s.x);
-          const headlen = 10;
-          const targetRadiusOffset = 20;
-          const arrowX = t.x - Math.cos(angle) * targetRadiusOffset;
-          const arrowY = t.y - Math.sin(angle) * targetRadiusOffset;
-
-          ctx.beginPath();
-          ctx.moveTo(arrowX, arrowY);
-          ctx.lineTo(arrowX - headlen * Math.cos(angle - Math.PI / 6), arrowY - headlen * Math.sin(angle - Math.PI / 6));
-          ctx.lineTo(arrowX - headlen * Math.cos(angle + Math.PI / 6), arrowY - headlen * Math.sin(angle + Math.PI / 6));
-          ctx.lineTo(arrowX, arrowY);
-          ctx.fillStyle = '#000';
-          ctx.fill();
-        }
-      });
-
-      nodes.forEach(n => {
-        const isFaded = highlightedId && !connectedIds.has(n.id);
-        const isHighlighted = highlightedId && connectedIds.has(n.id);
-
-        const fontSize = Math.min(24, 10 + n.frequency * 4);
-        ctx.font = `bold ${fontSize}px monospace`;
-        const textWidth = ctx.measureText(n.id).width;
-        const width = textWidth + 24;
-        const height = fontSize + 20;
-
-        ctx.fillStyle = isHighlighted ? '#FFE600' : '#FFF';
-        ctx.globalAlpha = isFaded ? 0.2 : 1;
-        ctx.fillRect(n.x - width / 2, n.y - height / 2, width, height);
-
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 3;
-        ctx.strokeRect(n.x - width / 2, n.y - height / 2, width, height);
-
-        let color = '#FFF';
-        if (n.sourceMode === 'RESEARCH') color = '#0047FF';
-        else if (n.sourceMode === 'SUPPORT') color = '#FF2D00';
-        else if (n.sourceMode === 'WORKFLOW') color = '#FFE600';
-        else if (n.sourceMode === 'KNOWLEDGE') color = '#00FF00';
-        else if (n.sourceMode === 'DEBATE') color = '#FF00FF';
-
-        ctx.fillStyle = color;
-        ctx.fillRect(n.x - width / 2, n.y - height / 2, 8, height);
-        ctx.strokeRect(n.x - width / 2, n.y - height / 2, 8, height);
-
-        ctx.fillStyle = '#000';
-        ctx.fillText(n.id, n.x - width / 2 + 16, n.y + fontSize / 3);
-        ctx.globalAlpha = 1;
-      });
-
-      animationId = requestAnimationFrame(draw);
-    };
-    draw();
-
-    return () => {
-      window.removeEventListener('resize', resize);
-      cancelAnimationFrame(animationId);
-    };
-  }, [frozen, highlightedId]);
-
-  const handlePointerDown = (e: React.PointerEvent) => {
-    const rx = e.nativeEvent.offsetX;
-    const ry = e.nativeEvent.offsetY;
-    const { nodes } = physicsRef.current;
-
-    for (let i = nodes.length - 1; i >= 0; i--) {
-      const n = nodes[i];
-      const fontSize = Math.min(24, 10 + n.frequency * 4);
-      const width = (n.id.length * fontSize * 0.6) + 24;
-      const height = fontSize + 20;
-      if (rx >= n.x - width / 2 && rx <= n.x + width / 2 && ry >= n.y - height / 2 && ry <= n.y + height / 2) {
-        draggedNode.current = n;
-        pointerPos.current = { x: rx, y: ry };
-        setHighlightedId(n.id);
-        return;
-      }
-    }
-    setHighlightedId(null);
-  };
-
-  const handlePointerMove = (e: React.PointerEvent) => {
-    const rx = e.nativeEvent.offsetX;
-    const ry = e.nativeEvent.offsetY;
-    pointerPos.current = { x: rx, y: ry };
-
-    const { nodes } = physicsRef.current;
-    let foundHover: KnowledgeNode | null = null;
-    for (let i = nodes.length - 1; i >= 0; i--) {
-      const n = nodes[i];
-      const fontSize = Math.min(24, 10 + n.frequency * 4);
-      const width = (n.id.length * fontSize * 0.6) + 24;
-      const height = fontSize + 20;
-      if (rx >= n.x - width / 2 && rx <= n.x + width / 2 && ry >= n.y - height / 2 && ry <= n.y + height / 2) {
-        foundHover = n;
-        break;
-      }
-    }
-
-    if (foundHover) {
-      setHoverData({ node: foundHover, x: rx, y: ry });
-    } else {
-      setHoverData(null);
-    }
-  };
-
-  const handlePointerUp = () => {
-    draggedNode.current = null;
-  };
-
-  const exportPng = () => {
-    if (!canvasRef.current) return;
-    const src = canvasRef.current.toDataURL('image/png');
-    const a = document.createElement('a');
-    a.href = src;
-    a.download = 'knowledge_map.png';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  };
-
-  const executeClear = () => {
-    if (window.confirm("CONFIRM_WIPE? [YES] [NO]")) {
-      physicsRef.current = { nodes: [], links: [] };
-      setGraph({ nodes: [], links: [] });
-      onClear();
-    }
-  };
-
-  return (
-    <div className="flex-1 flex flex-col relative w-full h-full bg-[#E5E5E5] overflow-hidden" ref={containerRef}>
-      <div className="absolute top-4 left-4 right-4 z-10 flex flex-wrap gap-2 pointer-events-none">
-        <button onClick={executeClear} className="pointer-events-auto bg-[#FF2D00] hover:bg-black text-white border-[3px] border-black px-4 py-2 font-black uppercase text-xs active:translate-y-1 transition-colors" style={{ boxShadow: '4px 4px 0px #000' }}>
-          [CLEAR_MAP]
-        </button>
-        <button onClick={exportPng} className="pointer-events-auto bg-[#FFE600] hover:bg-black hover:text-[#FFE600] text-black border-[3px] border-black px-4 py-2 font-black uppercase text-xs active:translate-y-1 transition-colors" style={{ boxShadow: '4px 4px 0px #000' }}>
-          [EXPORT_MAP_PNG]
-        </button>
-        <button onClick={() => setFrozen(!frozen)} className="pointer-events-auto bg-black hover:bg-white hover:text-black text-white border-[3px] border-black px-4 py-2 font-black uppercase text-xs active:translate-y-1 transition-colors" style={{ boxShadow: '4px 4px 0px #000' }}>
-          {frozen ? '[UNFREEZE_LAYOUT]' : '[FREEZE_LAYOUT]'}
-        </button>
-      </div>
-
-      <canvas
-        ref={canvasRef}
-        className="w-full h-full block cursor-crosshair touch-none"
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerLeave={handlePointerUp}
-      />
-
-      {hoverData && !draggedNode.current && (
-        <div
-          className="absolute z-20 bg-white border-[3px] border-black p-2 pointer-events-none font-mono text-xs uppercase"
-          style={{ left: hoverData.x + 15, top: hoverData.y + 15, boxShadow: '4px 4px 0px #000' }}
-        >
-          <div className="font-black border-b-[2px] border-black pb-1 mb-1 bg-black text-white px-1">NODE: {hoverData.node.id}</div>
-          <div>MENTIONS: {hoverData.node.frequency}</div>
-          <div>FIRST_SEEN: {new Date(hoverData.node.firstSeenMs).toLocaleTimeString()}</div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ReasoningChainViewer({
-  chain,
-  isConstructing
-}: {
-  chain?: { step: number; title: string; detail: string }[];
-  isConstructing?: boolean;
-}) {
-  const [expanded, setExpanded] = useState(true);
-  const interactedRef = useRef(false);
-
-  useEffect(() => {
-    if (chain && chain.length > 0 && !isConstructing) {
-      // Stagger animation + final text fade + 3 seconds
-      const animationTime = (chain.length * 300) + 300 + 3000;
-      const timer = setTimeout(() => {
-        if (!interactedRef.current) {
-          setExpanded(false);
-        }
-      }, animationTime);
-      return () => clearTimeout(timer);
-    }
-  }, [chain, isConstructing]);
-
-  const handleToggle = () => {
-    interactedRef.current = true;
-    setExpanded(!expanded);
-  };
-
-  if (!chain && !isConstructing) return null;
-
-  return (
-    <div className="mb-4 border-l-[3px] border-[#FFE600] pl-3">
-      <div className="flex justify-between items-center bg-gray-100 border-[2px] border-black p-2 font-mono text-xs uppercase font-bold cursor-pointer relative z-10" onClick={handleToggle}>
-        <span>{'>_REASONING_CHAIN'}</span>
-        <span>{expanded ? '[COLLAPSE]' : '[EXPAND]'}</span>
-      </div>
-      
-      <div className={`overflow-hidden transition-[max-height,opacity,margin] duration-500 ease-in-out ${expanded ? 'max-h-[2000px] opacity-100 mt-3' : 'max-h-0 opacity-0 mt-0'}`}>
-        <div className="flex flex-col gap-3">
-          {isConstructing && (
-            <div className="border-[2px] border-black p-3 bg-white font-mono text-xs font-bold flex flex-col gap-2">
-               <span className="uppercase animate-pulse text-black">CONSTRUCTING_REASONING_CHAIN ████░░░░░░ 40%</span>
-            </div>
-          )}
-          
-          {chain && chain.length > 0 && chain.map((c, idx) => (
-             <div 
-               key={idx} 
-               className="border-[2px] border-black p-3 bg-white slide-fade-in relative shadow-[4px_4px_0_#000]"
-               style={{ animationDelay: `${idx * 300}ms` }}
-             >
-               <div className="absolute -top-3 -left-3 bg-[#FFE600] text-black border-[2px] border-black font-black px-1 text-xs">
-                 [{String(c.step).padStart(2, '0')}]
-               </div>
-               <div className="font-mono font-black uppercase text-[0.75rem] mb-1">{c.title}</div>
-               <div className="font-mono text-[0.65rem] text-gray-700">{c.detail}</div>
-               {idx < chain.length - 1 && (
-                  <div className="absolute -bottom-4 left-1/2 -ml-2 text-black font-black block">▼</div>
-               )}
-             </div>
-          ))}
-
-          {chain && chain.length > 0 && (
-             <div className="text-[0.65rem] font-bold font-mono text-gray-500 mt-2 fade-in" style={{ animationDelay: `${chain.length * 300}ms` }}>
-                REASONING_COMPLETE — INITIALIZING_OUTPUT_STREAM
-             </div>
-          )}
-        </div>
-      </div>
-    </div>
   );
 }
 
