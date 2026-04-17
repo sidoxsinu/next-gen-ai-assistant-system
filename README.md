@@ -129,7 +129,6 @@ Add project screenshots:
 ---
 
 ## Demo Video
-Upload your demo video to Google Drive and paste the shareable link here(max 3 minutes).
 [Watch Demo](https://drive.google.com/file/d/1wr-PqhrbbMtSeMfv4ZDPXZ-1kURb0nTQ/view?usp=drivesdk)
 
 ---
