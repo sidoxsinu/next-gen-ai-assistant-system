@@ -109,8 +109,9 @@ In total, a single user session in NEXGEN-AI-TERMINAL weaves together streaming 
 ## Proof of AI Usage
 Attach screenshots in a `/proof` folder:
 
-![AI Proof](./Image 2026-04-17 at 3.19.34 AM.jpeg)
-![AI Proof](./Image 2026-04-17 at 3.23.54 AM.jpeg)
+![AIProof](./proof/Image%202026-04-17%20at%203.19.34%20AM.jpeg)
+![AIProof](./proof/Image%202026-04-17%20at%203.23.54%20AM%20(1).jpeg)
+![AIProof](./proof/Image%202026-04-17%20at%203.23.54%20AM.jpeg)
 ---
 
 ## Screenshots 
