@@ -117,9 +117,15 @@ Attach screenshots in a `/proof` folder:
 ## Screenshots 
 Add project screenshots:
 
-![Screenshot1](./Screenshot_17-4-2026_5133_mail.google.com.jpeg)  
-![Screenshot2](./assets/screenshot2.png)
-
+![Screenshot](./project_images/Screenshot%202026-04-17%20at%206.04.53%E2%80%AFAM.png)
+![Screenshot](./project_images/Screenshot%202026-04-17%20at%206.05.01%E2%80%AFAM.png)
+![Screenshot](./project_images/Screenshot%202026-04-17%20at%206.05.13%E2%80%AFAM.png)
+![Screenshot](./project_images/Screenshot%202026-04-17%20at%206.05.21%E2%80%AFAM.png)
+![Screenshot](./project_images/Screenshot%202026-04-17%20at%206.05.36%E2%80%AFAM.png)
+![Screenshot](./project_images/Screenshot%202026-04-17%20at%206.05.43%E2%80%AFAM.png)
+![Screenshot](./project_images/Screenshot%202026-04-17%20at%206.05.57%E2%80%AFAM.png)
+![Screenshot](./project_images/Screenshot%202026-04-17%20at%206.06.04%E2%80%AFAM.png)
+![Screenshot](./project_images/Screenshot_17-4-2026_5133_mail.google.com.jpeg)
 ---
 
 ## Demo Video
