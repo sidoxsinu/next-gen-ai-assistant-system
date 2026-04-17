@@ -17,7 +17,7 @@ There is no single system that can debate an idea, map knowledge visually, run a
 Describe your solution, how it works, and what makes it useful.
 
 
- NEXT-GEN AI ASSISTANT SYSTEM  is a multi-mode, brutalist-designed AI assistant system that goes far beyond a standard chatbot. Built on top of the Groq API with a Node.js backend, it gives users a unified terminal-style command center for research, support, workflow automation, and knowledge building — all powered by large language models in real time.
+NEXT-GEN AI ASSISTANT SYSTEM is a multi-mode, brutalist-designed AI assistant system that goes far beyond a standard chatbot. Built on top of the Groq API with a Node.js backend, it gives users a unified terminal-style command center for research, support, workflow automation, and knowledge building — all powered by large language models in real time.
 
 How It Works:
 On first launch, users authenticate with their Groq API key via a secure popup gate. Once inside, the system routes every user query through a specialized system prompt tailored to whichever of the four active modes is selected — Research Assistant, Support Bot, Workflow Automator, or Knowledge Companion. Responses stream back in real time with typewriter rendering at user-controlled speeds.
@@ -31,88 +31,85 @@ At its core, NEXGEN-AI-TERMINAL treats the AI not as a search box but as a think
 
 ---
 
-## Google AI Usage
-Google Studio AI
-Google Antigravity
-Google Gemini
+## AI Stack Usage
+Groq API
+Llama 3.3 70B Versatile
+Whisper Large V3
 
 ### Tools / Models Used
 Github
-Gemini API
+Groq API
 
-### How Google AI Was Used
+### How AI Was Used
 
-Google Gemini 1.5 Flash is not a peripheral feature in this project — it is the *core engine* that powers every interaction across the entire application. Here is a precise breakdown of every point where AI is actively integrated:
+Llama 3.3 70B Versatile (running via the Groq API) is not a peripheral feature in this project — it is the *core engine* that powers every interaction across the entire application. Here is a precise breakdown of every point where AI is actively integrated:
 
 ---
 
-*1. FOUR SPECIALIZED ASSISTANT MODES*
-Every tab in the app sends user queries to the Gemini API with a uniquely crafted system prompt that transforms the model's behavior entirely:
-- RESEARCH_ASSISTANT — Gemini is prompted to act as an academic research engine, returning structured summaries, key findings, and topic breakdowns
-- SUPPORT_BOT — Gemini is prompted as a professional customer service agent maintaining conversation context across turns
-- WORKFLOW_AUTO — Gemini receives plain English task descriptions and converts them into prioritized, numbered action pipelines
-- KNOWLEDGE_COMPANION — Gemini tracks topics explored within the session and proactively suggests related subjects
+*1. CORE ASSISTANT MODES*
+Every tab in the app sends user queries to the Groq API with a uniquely crafted system prompt that transforms the model's behavior entirely:
+- RESEARCH_ASSISTANT — The model is prompted to act as an academic research engine, returning structured summaries, key findings, and topic breakdowns.
+- SUPPORT_BOT — The model is prompted as a professional customer service agent maintaining conversation context across turns.
+- WORKFLOW_AUTO — The model receives plain English task descriptions and converts them into prioritized, structured action pipelines.
+- KNOWLEDGE_COMPANION — The model tracks topics explored within the session and proactively suggests related subjects.
 
 ---
 
 *2. AI DEBATE MODE*
-Three separate sequential Gemini API calls are fired for a single debate topic:
-- *Call 1* — Gemini is system-prompted as a passionate PRO advocate and argues strongly in favor of the topic
-- *Call 2* — Gemini is system-prompted as a CON advocate and given Call 1's argument as context so it can directly rebut it
-- *Call 3* — A neutral Gemini instance reads both arguments and delivers a structured verdict on which side argued more effectively
+Three separate sequential Groq API calls are fired for a single debate topic:
+- *Call 1* — The model is system-prompted as a passionate PRO advocate and argues strongly in favor of the topic.
+- *Call 2* — The model is system-prompted as a CON advocate and given Call 1's argument as context so it can directly rebut it.
+- *Call 3* — A neutral AI instance reads both arguments and delivers a structured verdict on which side argued more effectively.
 
 ---
 
 *3. FACT CHECKER*
-When the user clicks [VERIFY_FACTS] on any AI response, a dedicated Gemini API call is made. The model is prompted to act as a rigorous fact-checking engine — it extracts every factual claim from the response, classifies each as VERIFIED, UNCERTAIN, or DISPUTED, and returns a structured JSON report. A trust score is calculated from the ratio of verified claims and rendered as a brutalist progress bar.
+When the user clicks [VERIFY_FACTS] on any AI response, a dedicated Groq API call is made. The model is prompted to act as a rigorous fact-checking engine — it extracts every factual claim from the response, classifies each as VERIFIED, UNCERTAIN, or DISPUTED, and returns a structured JSON report.
 
 ---
 
 *4. ELI5 / EXPERT TOGGLE*
-The active mode injects a dynamic instruction into the Gemini system prompt before every API call — either forcing the model to explain concepts as simply as a bedtime story or respond with the depth and precision of a peer-reviewed academic paper. The same question gets a completely different Gemini response depending on the toggle state.
+The active mode injects a dynamic instruction into the system prompt before every API call — either forcing the model to explain concepts as simply as a bedtime story or respond with the depth and precision of a peer-reviewed academic paper. The same question gets a completely different response depending on the toggle state.
 
 ---
 
-*5. MOOD DETECTOR*
-After every user message, a lightweight Gemini API call analyzes the emotional tone of the input and returns a classification tag such as ANXIOUS, CURIOUS, FRUSTRATED, or CONFIDENT — displayed as a colored brutalist label above the AI response.
+*5. METADATA EXTRACTION BATCHING (MOOD, TAGS, SUGGESTIONS)*
+To optimize latency and token usage, the system avoids parallel API calls. Instead, the primary application system prompt instructs the model to append a strict `--META--` block at the end of its response. The React frontend intercepts and parses this block before it renders to:
+- Detect the **Mood / Tone** of the conversation.
+- Auto-generate **Topic Tags** (e.g., #MEDICAL #RESEARCH).
+- Generate **Prompt Suggestions** for context-relevant follow-ups.
 
 ---
 
-*6. AUTO TOPIC TAGGER*
-A parallel Gemini call extracts 2–3 core keyword hashtags from every conversation turn automatically, giving users a live meta-layer of topic awareness displayed below each response as #MEDICAL #RESEARCH #URGENT
+*6. GMAIL EMAIL COMPOSER*
+When the user clicks [TRANSMIT_VIA_GMAIL], the model is called to intelligently compose a complete professional HTML email — generating the subject line and a structured body summarizing the current session context — before dispatching it via Gmail SMTP to the specified recipient.
 
 ---
 
-*7. PROMPT SUGGESTIONS*
-After every AI response, Gemini generates 3 contextually relevant follow-up questions based on what was just discussed. These appear as clickable brutalist buttons that auto-fill and submit the input when tapped.
+*7. MULTI-LANGUAGE MODE*
+The selected output language is injected directly into the system prompt before every API call, instructing the model to respond entirely in the chosen language — covering English, Spanish, French, German, Hindi, Arabic, and Japanese natively without an external translation layer.
 
 ---
 
-*8. GMAIL EMAIL COMPOSER*
-When the user clicks [TRANSMIT_VIA_GMAIL], Gemini is called to intelligently compose a complete professional HTML email — generating the subject line, greeting, structured body summarizing the current session context, and a closing signature — before dispatching it via Gmail SMTP to the user-specified recipient.
+*8. VOICE-TO-TEXT (WHISPER API)*
+The system captures live microphone audio, encodes it in the browser, and beams it directly into Groq's Whisper Large V3 endpoint to handle ultra-fast speech-to-text transcriptions, acting as the primary input mechanism for voice users.
 
 ---
 
-*9. MULTI-LANGUAGE MODE*
-The selected output language is injected directly into the Gemini system prompt before every API call, instructing the model to respond entirely in the chosen language — covering English, Spanish, French, German, Hindi, Arabic, and Japanese without any translation layer.
+*9. STREAMING RESPONSES*
+All primary Groq API calls use *server-sent events (SSE) streaming* so responses render character-by-character in real time inside the brutalist terminal output panel, with user-controllable typing speed via the STREAM_SPEED slider.
 
 ---
 
-*10. STREAMING RESPONSES*
-All primary Gemini API calls use *server-sent events streaming* so responses render character by character in real time inside the brutalist terminal output panel, with user-controllable speed via the STREAM_SPEED slider.
-
----
-
-In total, a single user interaction in NEXGEN-AI-TERMINAL can trigger *up to 5 simultaneous or sequential Gemini API calls* — for the main response, mood detection, topic tagging, prompt suggestions, and fact checking — making Gemini not just a feature but the living backbone of the entire system.
+In total, a single user session in NEXGEN-AI-TERMINAL weaves together streaming text generation, batch metadata parsing, real-time voice transcription, and sequential multi-agent prompts (like the Debate Mode or Fact Checker) — making the Groq AI stack the living backbone of the entire frontend.
 
 
 ---
 
-## Proof of Google AI Usage
+## Proof of AI Usage
 Attach screenshots in a `/proof` folder:
 
 ![AI Proof](./Image 2026-04-17 at 3.19.34 AM.jpeg)
-![AI Proof](./Image 2026-04-17 at 3.23.54 AM.jpeg)
 ![AI Proof](./Image 2026-04-17 at 3.23.54 AM.jpeg)
 ---
 
@@ -126,9 +123,7 @@ Add project screenshots:
 
 ## Demo Video
 Upload your demo video to Google Drive and paste the shareable link here(max 3 minutes).
-[Watch Demo](#)
-
-https://drive.google.com/file/d/1wr-PqhrbbMtSeMfv4ZDPXZ-1kURb0nTQ/view?usp=drivesdk
+[Watch Demo](https://drive.google.com/file/d/1wr-PqhrbbMtSeMfv4ZDPXZ-1kURb0nTQ/view?usp=drivesdk)
 
 ---
 
@@ -136,7 +131,7 @@ https://drive.google.com/file/d/1wr-PqhrbbMtSeMfv4ZDPXZ-1kURb0nTQ/view?usp=drive
 
 ```bash
 # Clone the repository
-git clone <next-gen-ai-assistant-system>
+git clone https://github.com/sidoxsinu/next-gen-ai-assistant-system.git
 
 # Go to project folder
 cd next-gen-ai-assistant-system
@@ -145,4 +140,4 @@ cd next-gen-ai-assistant-system
 npm install
 
 # Run the project
-npm start
+npm run dev
