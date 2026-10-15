@@ -133,6 +133,28 @@ Add project screenshots:
 
 ---
 
+## Environment Configuration
+
+Copy the example environment file and configure your API keys and credentials:
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Description | Default / Example |
+|---|---|---|
+| `DEFAULT_AI_PROVIDER` | Active AI provider (`gemini`, `groq`, or `ollama`) | `gemini` |
+| `GEMINI_API_KEY` | Google Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey) | Free key from Google AI Studio |
+| `GEMINI_MODEL` | Google Gemini model name | `gemini-2.5-flash` |
+| `GROQ_API_KEY` | Groq Cloud API key from [Groq Console](https://console.groq.com/keys) | `gsk_...` |
+| `GROQ_MODEL` | Groq Llama model | `llama-3.3-70b-versatile` |
+| `OLLAMA_BASE_URL` | Local Ollama instance URL | `http://localhost:11434` |
+| `OLLAMA_MODEL` | Local Ollama model name | `llama3.2` |
+| `GMAIL_USER` | Gmail address for session transmission | `user@gmail.com` |
+| `GMAIL_APP_PASSWORD` | Dedicated 16-char Google App Password from [Google App Passwords](https://myaccount.google.com/apppasswords) | `xxxx xxxx xxxx xxxx` |
+
+---
+
 ## Installation Steps
 
 ```bash
@@ -145,5 +167,9 @@ cd next-gen-ai-assistant-system
 # Install dependencies
 npm install
 
+# Configure environment
+cp .env.example .env
+
 # Run the project
 npm run dev
+```

@@ -3,15 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Key, Server, Cpu, CheckCircle, RefreshCw } from 'lucide-react';
 
-
-type Mode = 'RESEARCH' | 'SUPPORT' | 'WORKFLOW' | 'KNOWLEDGE' | 'DEBATE' | 'KNOWLEDGE_MAP';
-
-
+type Mode = 'RESEARCH' | 'SUPPORT' | 'WORKFLOW' | 'KNOWLEDGE' | 'DEBATE';
+type AIProvider = 'GEMINI' | 'GROQ' | 'OLLAMA';
 
 interface Message {
   id: string;
@@ -52,28 +50,58 @@ interface DebateRound {
 }
 
 export default function App() {
-  const [apiKey, setApiKey] = useState(localStorage.getItem('GROQ_API_KEY') || '');
-  const [showAuthPopup, setShowAuthPopup] = useState(!localStorage.getItem('GROQ_API_KEY'));
-  const [authInput, setAuthInput] = useState('');
-  const [authError, setAuthError] = useState(false);
+  // Provider state
+  const defaultProvider = ((process.env.DEFAULT_AI_PROVIDER as string) || 'gemini').toUpperCase() as AIProvider;
+  const [provider, setProvider] = useState<AIProvider>(
+    (localStorage.getItem('AI_PROVIDER') as AIProvider) || defaultProvider || 'GEMINI'
+  );
 
-  const handleAuthSubmit = () => {
-    if (!authInput.trim()) {
-      setAuthError(true);
-      return;
-    }
-    localStorage.setItem('GROQ_API_KEY', authInput.trim());
-    setApiKey(authInput.trim());
-    setShowAuthPopup(false);
-    setAuthError(false);
-  };
+  // API Keys & endpoints (prefer localStorage, fall back to .env)
+  const [geminiKey, setGeminiKey] = useState<string>(
+    localStorage.getItem('GEMINI_API_KEY') || (process.env.GEMINI_API_KEY as string) || ''
+  );
+  const [groqKey, setGroqKey] = useState<string>(
+    localStorage.getItem('GROQ_API_KEY') || (process.env.GROQ_API_KEY as string) || ''
+  );
+  const [ollamaBaseUrl, setOllamaBaseUrl] = useState<string>(
+    localStorage.getItem('OLLAMA_BASE_URL') || (process.env.OLLAMA_BASE_URL as string) || 'http://localhost:11434'
+  );
 
-  const handleResetApiKey = () => {
-    localStorage.removeItem('GROQ_API_KEY');
-    setApiKey('');
-    setAuthInput('');
-    setShowAuthPopup(true);
-  };
+  // Models
+  const [geminiModel, setGeminiModel] = useState<string>(
+    localStorage.getItem('GEMINI_MODEL') || (process.env.GEMINI_MODEL as string) || 'gemini-2.5-flash'
+  );
+  const [groqModel, setGroqModel] = useState<string>(
+    localStorage.getItem('GROQ_MODEL') || (process.env.GROQ_MODEL as string) || 'llama-3.3-70b-versatile'
+  );
+  const [ollamaModel, setOllamaModel] = useState<string>(
+    localStorage.getItem('OLLAMA_MODEL') || (process.env.OLLAMA_MODEL as string) || 'llama3.2'
+  );
+
+  // Ollama status & model list
+  const [ollamaStatus, setOllamaStatus] = useState<{ online: boolean; models: string[] }>({
+    online: false,
+    models: []
+  });
+  const [isCheckingOllama, setIsCheckingOllama] = useState(false);
+
+  // Auth gate status
+  const hasValidActiveCredentials = useCallback((): boolean => {
+    if (provider === 'OLLAMA') return true; // Ollama runs locally without an API key
+    if (provider === 'GEMINI') return Boolean(geminiKey && geminiKey.trim());
+    if (provider === 'GROQ') return Boolean(groqKey && groqKey.trim());
+    return false;
+  }, [provider, geminiKey, groqKey]);
+
+  const [showAuthPopup, setShowAuthPopup] = useState(!hasValidActiveCredentials());
+  const [authTempKey, setAuthTempKey] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  // Server SMTP status
+  const [serverSmtp, setServerSmtp] = useState<{ configured: boolean; user: string }>({
+    configured: Boolean(process.env.HAS_SMTP_CONFIG),
+    user: (process.env.GMAIL_USER as string) || ''
+  });
 
   const [activeMode, setActiveMode] = useState<Mode>('RESEARCH');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -90,7 +118,7 @@ export default function App() {
   const [emailTarget, setEmailTarget] = useState('');
   const [isEmailing, setIsEmailing] = useState(false);
 
-  // New Upgrade States
+  // Upgrade States
   const [outputLang, setOutputLang] = useState('English');
   const [streamSpeed, setStreamSpeed] = useState(0);
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -114,7 +142,105 @@ export default function App() {
   const [showConfig, setShowConfig] = useState(false);
   const [smtpError, setSmtpError] = useState('');
 
+  // Check Ollama status
+  const checkOllamaStatus = useCallback(async () => {
+    setIsCheckingOllama(true);
+    try {
+      const res = await fetch('/api/ollama-status');
+      const data = await res.json();
+      if (data.online) {
+        const modelNames = (data.models || []).map((m: any) => m.name || m);
+        setOllamaStatus({ online: true, models: modelNames });
+        if (modelNames.length > 0 && !modelNames.includes(ollamaModel)) {
+          setOllamaModel(modelNames[0]);
+          localStorage.setItem('OLLAMA_MODEL', modelNames[0]);
+        }
+      } else {
+        setOllamaStatus({ online: false, models: [] });
+      }
+    } catch {
+      setOllamaStatus({ online: false, models: [] });
+    } finally {
+      setIsCheckingOllama(false);
+    }
+  }, [ollamaModel]);
 
+  // Check server configs on mount
+  useEffect(() => {
+    fetch('/api/smtp-status')
+      .then(res => res.json())
+      .then(data => {
+        if (data.configured) {
+          setServerSmtp({ configured: true, user: data.user || '' });
+        }
+      })
+      .catch(() => {});
+
+    checkOllamaStatus();
+  }, [checkOllamaStatus]);
+
+  // Handle provider switch
+  const handleSelectProvider = (newProvider: AIProvider) => {
+    setProvider(newProvider);
+    localStorage.setItem('AI_PROVIDER', newProvider);
+    setAuthError(null);
+
+    if (newProvider === 'GEMINI') {
+      setAuthTempKey(geminiKey);
+    } else if (newProvider === 'GROQ') {
+      setAuthTempKey(groqKey);
+    } else {
+      setAuthTempKey('');
+    }
+  };
+
+  const handleAuthSubmit = () => {
+    setAuthError(null);
+
+    if (provider === 'GEMINI') {
+      if (!authTempKey.trim() && !geminiKey) {
+        setAuthError('ERROR: GEMINI_API_KEY_REQUIRED (Get one free at aistudio.google.com)');
+        return;
+      }
+      const finalKey = authTempKey.trim() || geminiKey;
+      localStorage.setItem('GEMINI_API_KEY', finalKey);
+      setGeminiKey(finalKey);
+    } else if (provider === 'GROQ') {
+      if (!authTempKey.trim() && !groqKey) {
+        setAuthError('ERROR: GROQ_API_KEY_REQUIRED (Starts with gsk_ from console.groq.com)');
+        return;
+      }
+      const finalKey = authTempKey.trim() || groqKey;
+      localStorage.setItem('GROQ_API_KEY', finalKey);
+      setGroqKey(finalKey);
+    } else if (provider === 'OLLAMA') {
+      localStorage.setItem('OLLAMA_MODEL', ollamaModel);
+      localStorage.setItem('OLLAMA_BASE_URL', ollamaBaseUrl);
+    }
+
+    localStorage.setItem('AI_PROVIDER', provider);
+    setShowAuthPopup(false);
+  };
+
+  const handleOpenAuthModal = () => {
+    if (provider === 'GEMINI') setAuthTempKey(geminiKey);
+    else if (provider === 'GROQ') setAuthTempKey(groqKey);
+    else setAuthTempKey('');
+    setAuthError(null);
+    setShowAuthPopup(true);
+  };
+
+  const handleResetCurrentKey = () => {
+    if (provider === 'GEMINI') {
+      localStorage.removeItem('GEMINI_API_KEY');
+      setGeminiKey('');
+    } else if (provider === 'GROQ') {
+      localStorage.removeItem('GROQ_API_KEY');
+      setGroqKey('');
+    }
+    setAuthTempKey('');
+    setShowAuthPopup(true);
+  };
 
   const saveSmtpCredentials = () => {
     localStorage.setItem('SMTP_EMAIL', smtpEmail);
@@ -146,8 +272,6 @@ export default function App() {
       localStorage.setItem('chat_history', JSON.stringify(messages));
     }
   }, [messages]);
-
-
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -184,7 +308,7 @@ export default function App() {
             const { pText, pMeta } = parseMetadata(msg.rawText);
             if (msg.text.length < pText.length) {
               updated = true;
-              const step = streamSpeed === 20 ? 4 : 1;
+              const step = streamSpeed === 50 ? 1 : 4;
               const updatedText = pText.slice(0, msg.text.length + step);
               return { ...msg, text: updatedText, metadata: (updatedText.length >= pText.length && pMeta) ? pMeta : msg.metadata };
             } else if (!msg.metadata && pMeta) {
@@ -204,7 +328,7 @@ export default function App() {
     try {
       const saved = localStorage.getItem('chat_history');
       if (saved) setMessages(JSON.parse(saved));
-    } catch (e) { }
+    } catch (e) {}
   };
 
   const getTokenCount = () => {
@@ -248,41 +372,106 @@ export default function App() {
     sendCommand(suggestion);
   };
 
-  const verifyFacts = async (msgId: string, fullText: string) => {
-    if (!apiKey) return;
-    setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isFactChecking: true, isFactCheckOpen: true } : m));
-    
-    try {
-      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-        body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          messages: [
-            { 
-               role: "system", 
-               content: "You are a rigorous fact-checking engine. Analyze the following AI-generated response thoroughly. For every factual claim, classify it as: VERIFIED (well established fact), UNCERTAIN (plausible but unconfirmed), or DISPUTED (contradicts known evidence). Return ONLY a flat JSON array of objects with keys: 'claim' (the extracted claim), 'verdict' (VERIFIED / UNCERTAIN / DISPUTED), and 'reason' (one sentence explanation). Nothing else. Do NOT WRAP IN MARKDOWN." 
-            }, 
-            { role: "user", content: fullText }
-          ],
-          temperature: 0.1
-        })
-      });
-      const data = await res.json();
-      let parsed = [];
-      try {
-        let jsonStr = data.choices[0].message.content.trim();
-        if (jsonStr.startsWith("```json")) jsonStr = jsonStr.slice(7, -3).trim();
-        if (jsonStr.startsWith("```")) jsonStr = jsonStr.slice(3, -3).trim();
-        parsed = JSON.parse(jsonStr);
-      } catch (e) {
-        console.error("Fact checker parsing failed", e);
+  // Helper for non-streaming AI requests (Fact Check, Debate, Email)
+  const generateAIText = async (systemPrompt: string, userPrompt: string, jsonMode: boolean = false): Promise<string> => {
+    if (provider === 'GEMINI') {
+      if (!geminiKey) throw new Error('GEMINI_API_KEY is not set. Please configure in settings.');
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`;
+      const payload: any = {
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: 'user', parts: [{ text: userPrompt }] }]
+      };
+      if (jsonMode) {
+        payload.generationConfig = { responseMimeType: 'application/json' };
       }
-      
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error?.message || `Gemini API returned HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    } else if (provider === 'GROQ') {
+      if (!groqKey) throw new Error('GROQ_API_KEY is not set. Please configure in settings.');
+      const payload: any = {
+        model: groqModel,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ]
+      };
+      if (jsonMode) {
+        payload.response_format = { type: 'json_object' };
+      }
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${groqKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error?.message || `Groq API returned HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      return data.choices?.[0]?.message?.content || '';
+    } else {
+      // OLLAMA
+      const endpoint = '/ollama-proxy/v1/chat/completions';
+      const payload: any = {
+        model: ollamaModel,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ]
+      };
+      if (jsonMode) {
+        payload.format = 'json';
+      }
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).catch(() => {
+        throw new Error(`Cannot reach local Ollama at ${ollamaBaseUrl}. Make sure 'ollama serve' is running.`);
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error?.message || `Ollama returned HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      return data.choices?.[0]?.message?.content || '';
+    }
+  };
+
+  const verifyFacts = async (msgId: string, fullText: string) => {
+    setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isFactChecking: true, isFactCheckOpen: true } : m));
+
+    try {
+      const sysPrompt = "You are a rigorous fact-checking engine. Analyze the following AI-generated response thoroughly. For every factual claim, classify it as: VERIFIED (well established fact), UNCERTAIN (plausible but unconfirmed), or DISPUTED (contradicts known evidence). Return ONLY a flat JSON array of objects with keys: 'claim' (the extracted claim), 'verdict' (VERIFIED / UNCERTAIN / DISPUTED), and 'reason' (one sentence explanation). Do NOT wrap in markdown or extra prose.";
+      const rawRes = await generateAIText(sysPrompt, fullText, true);
+
+      let parsed: any[] = [];
+      try {
+        let clean = rawRes.trim();
+        if (clean.startsWith('```json')) clean = clean.slice(7, -3).trim();
+        if (clean.startsWith('```')) clean = clean.slice(3, -3).trim();
+        parsed = JSON.parse(clean);
+      } catch (e) {
+        console.error('Fact checker parsing failed', e);
+      }
+
       setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isFactChecking: false, factCheckReport: Array.isArray(parsed) ? parsed : [] } : m));
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
       setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isFactChecking: false } : m));
+      alert(`FACT_CHECK_ERROR: ${e.message}`);
     }
   };
 
@@ -294,8 +483,9 @@ export default function App() {
 
   const sendCommand = async (commandStr: string) => {
     if (!commandStr.trim()) return;
-    if (!apiKey) {
-      setMessages(prev => [{ id: Date.now().toString(), role: 'model', text: ">> FATAL ERROR: GROQ API_KEY REQUIRED. INPUT IN HEADER.", rawText: ">> FATAL ERROR: GROQ API_KEY REQUIRED. INPUT IN HEADER." }, ...prev]);
+
+    if (!hasValidActiveCredentials()) {
+      setShowAuthPopup(true);
       return;
     }
 
@@ -328,53 +518,51 @@ export default function App() {
         systemPrompt += `\n>> INSTRUCTION: Respond at a PhD/research level using high-level technical terminology, citation style, and deep analytical reasoning.`;
       }
 
-      const apiMessages = [
-        { role: 'system', content: systemPrompt },
-        ...messages.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.rawText || m.text })),
-        { role: 'user', content: commandStr }
-      ];
+      // STREAMING CALL ROUTED BY ACTIVE PROVIDER
+      if (provider === 'GEMINI') {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:streamGenerateContent?alt=sse&key=${geminiKey}`;
+        const contents = [
+          ...messages.map(m => ({
+            role: m.role === 'user' ? 'user' : 'model',
+            parts: [{ text: m.rawText || m.text }]
+          })),
+          { role: 'user', parts: [{ text: commandStr }] }
+        ];
 
-      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          messages: apiMessages,
-          stream: true,
-          max_tokens: 4096
-        })
-      });
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: systemPrompt }] },
+            contents,
+            generationConfig: { maxOutputTokens: 4096 }
+          })
+        });
 
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => ({}));
-        throw new Error(errBody.error?.message || `HTTP ${res.status}`);
-      }
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          throw new Error(errBody.error?.message || `Gemini HTTP ${res.status}`);
+        }
 
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder("utf-8");
+        const reader = res.body?.getReader();
+        const decoder = new TextDecoder('utf-8');
+        if (reader) {
+          let buffer = '';
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
 
-      if (reader) {
-        let buffer = '';
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-
-          for (const line of lines) {
-            const trimmedLine = line.trim();
-            if (!trimmedLine) continue;
-            if (trimmedLine === 'data: [DONE]') break;
-
-            if (trimmedLine.startsWith('data: ')) {
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed || !trimmed.startsWith('data: ')) continue;
               try {
-                const data = JSON.parse(trimmedLine.slice(6));
-                if (data.choices && data.choices[0].delta && data.choices[0].delta.content) {
-                  fullRawText += data.choices[0].delta.content;
+                const json = JSON.parse(trimmed.slice(6));
+                const chunk = json.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (chunk) {
+                  fullRawText += chunk;
                   setMessages(prev => {
                     const newMsgs = [...prev];
                     const curMsg = newMsgs[modelMsgIndex];
@@ -390,22 +578,109 @@ export default function App() {
                   });
                 }
               } catch (e) {
-                console.error("Parse error on streaming chunk:", trimmedLine, e);
-                triggerError();
+                console.error('Parse error on Gemini SSE chunk:', trimmed, e);
+              }
+            }
+          }
+        }
+      } else {
+        // GROQ or OLLAMA (OpenAI-compatible SSE streaming)
+        const isGroq = provider === 'GROQ';
+        const url = isGroq ? 'https://api.groq.com/openai/v1/chat/completions' : '/ollama-proxy/v1/chat/completions';
+        const modelName = isGroq ? groqModel : ollamaModel;
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (isGroq) headers['Authorization'] = `Bearer ${groqKey}`;
+
+        const apiMessages = [
+          { role: 'system', content: systemPrompt },
+          ...messages.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.rawText || m.text })),
+          { role: 'user', content: commandStr }
+        ];
+
+        const res = await fetch(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            model: modelName,
+            messages: apiMessages,
+            stream: true,
+            max_tokens: 4096
+          })
+        }).catch(err => {
+          if (!isGroq) {
+            throw new Error(`Cannot reach local Ollama at ${ollamaBaseUrl}. Please run 'ollama serve' or switch to Gemini.`);
+          }
+          throw err;
+        });
+
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          const errMsg = errBody.error?.message || `HTTP ${res.status}`;
+          if (isGroq && res.status === 401) {
+            throw new Error(`Invalid Groq API Key. Please click [AI_KERNEL_SETTINGS] to update your key or switch to Gemini.`);
+          }
+          if (isGroq && (errMsg.includes('access') || errMsg.includes('model'))) {
+            throw new Error(`Groq model access issue: "${errMsg}". Try switching to Gemini or Ollama.`);
+          }
+          throw new Error(errMsg);
+        }
+
+        const reader = res.body?.getReader();
+        const decoder = new TextDecoder('utf-8');
+
+        if (reader) {
+          let buffer = '';
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+              const trimmedLine = line.trim();
+              if (!trimmedLine) continue;
+              if (trimmedLine === 'data: [DONE]') break;
+
+              if (trimmedLine.startsWith('data: ')) {
+                try {
+                  const data = JSON.parse(trimmedLine.slice(6));
+                  if (data.choices && data.choices[0].delta && data.choices[0].delta.content) {
+                    fullRawText += data.choices[0].delta.content;
+                    setMessages(prev => {
+                      const newMsgs = [...prev];
+                      const curMsg = newMsgs[modelMsgIndex];
+                      if (!curMsg) return prev;
+                      const updatedMsg = { ...curMsg, rawText: fullRawText };
+                      if (streamSpeed === 0) {
+                        const { pText, pMeta } = parseMetadata(fullRawText);
+                        updatedMsg.text = pText;
+                        updatedMsg.metadata = pMeta;
+                      }
+                      newMsgs[modelMsgIndex] = updatedMsg;
+                      return newMsgs;
+                    });
+                  }
+                } catch (e) {
+                  console.error('Parse error on streaming chunk:', trimmedLine, e);
+                  triggerError();
+                }
               }
             }
           }
         }
       }
 
-
       if (activeMode === 'KNOWLEDGE') {
         const newSubject = commandStr.split(' ').slice(0, 3).join(' ');
-        setKnowledgeTrail(prev => [{
-          id: Date.now().toString(),
-          subject: newSubject,
-          timestamp: new Date().toLocaleTimeString()
-        }, ...prev].slice(0, 10));
+        setKnowledgeTrail(prev => [
+          {
+            id: Date.now().toString(),
+            subject: newSubject,
+            timestamp: new Date().toLocaleTimeString()
+          },
+          ...prev
+        ].slice(0, 10));
       }
 
       if (activeMode === 'WORKFLOW') {
@@ -415,7 +690,7 @@ export default function App() {
             const tasks = JSON.parse(jsonMatch[0]);
             setActiveWorkflow(tasks.map((t: any) => ({ ...t, completed: false })));
           } catch (e) {
-            console.error("Failed to parse tasks", e);
+            console.error('Failed to parse tasks', e);
             triggerError();
           }
         }
@@ -426,20 +701,27 @@ export default function App() {
       triggerError();
       setMessages(prev => {
         const newMsgs = [...prev];
-        newMsgs[modelMsgIndex] = { id: Date.now().toString(), role: 'model', text: `>> FATAL EXCEPTION: ${err.message || 'SYSTEM FAILURE'}`, rawText: `>> FATAL EXCEPTION: ${err.message || 'SYSTEM FAILURE'}` };
+        const failText = `>> SYSTEM ERROR [${provider}]: ${err.message || 'SYSTEM FAILURE'}`;
+        newMsgs[modelMsgIndex] = {
+          id: Date.now().toString(),
+          role: 'model',
+          text: failText,
+          rawText: failText
+        };
         return newMsgs;
       });
     } finally {
       setIsTyping(false);
     }
   };
+
   const toggleTask = (id: string) => {
     setActiveWorkflow(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
   };
 
   const handleInitiateDebate = async (roundTopic: string, isRound2: boolean = false) => {
-    if (!apiKey) {
-      alert(">> FATAL ERROR: GROQ API_KEY REQUIRED.");
+    if (!hasValidActiveCredentials()) {
+      setShowAuthPopup(true);
       return;
     }
     if (!roundTopic.trim()) return;
@@ -451,56 +733,32 @@ export default function App() {
 
     try {
       // 1. Fetch Agent A (PRO)
-      const resA = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          messages: [{ role: 'system', content: `You are AGENT_A. Argue strictly FOR the following topic using strong, aggressive logic. Keep it to one solid paragraph.` }, { role: 'user', content: roundTopic }]
-        })
-      });
-      if (!resA.ok) throw new Error("Agent A failed");
-      const dataA = await resA.json();
-      const textA = dataA.choices[0].message.content;
+      const textA = await generateAIText(
+        "You are AGENT_A. Argue strictly FOR the following topic using strong, assertive logic. Keep it to one solid paragraph. DO NOT USE MARKDOWN.",
+        roundTopic
+      );
 
       // 2. Fetch Agent B (CON)
-      const resB = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          messages: [{ role: 'system', content: `You are AGENT_B. Argue strictly AGAINST the topic. You must directly rebut AGENT_A's argument provided below. Keep it to one solid paragraph.\nAGENT_A CONTEXT: ${textA}` }, { role: 'user', content: roundTopic }]
-        })
-      });
-      if (!resB.ok) throw new Error("Agent B failed");
-      const dataB = await resB.json();
-      const textB = dataB.choices[0].message.content;
+      const textB = await generateAIText(
+        `You are AGENT_B. Argue strictly AGAINST the topic. You must directly rebut AGENT_A's argument provided below. Keep it to one solid paragraph. DO NOT USE MARKDOWN.\nAGENT_A CONTEXT: ${textA}`,
+        roundTopic
+      );
 
       // 3. Fetch Verdict
-      const resV = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          messages: [{ role: 'system', content: `You are the JUDGE. Below is a debate on the topic: "${roundTopic}".\nAGENT_A (PRO):\n${textA}\n\nAGENT_B (CON):\n${textB}\n\nDeclare which argument was stronger and explicitly state why in one paragraph. DO NOT USE MARKDOWN.` }, { role: 'user', content: 'Who won?' }]
-        })
-      });
-      if (!resV.ok) throw new Error("Verdict failed");
-      const dataV = await resV.json();
-      const textV = dataV.choices[0].message.content;
+      const textV = await generateAIText(
+        `You are the JUDGE. Below is a debate on the topic: "${roundTopic}".\nAGENT_A (PRO):\n${textA}\n\nAGENT_B (CON):\n${textB}\n\nDeclare which argument was stronger and explicitly state why in one paragraph. DO NOT USE MARKDOWN.`,
+        'Who won and why?'
+      );
 
       setDebateHistory(prev => [...prev, { agentA: textA, agentB: textB, verdict: textV }]);
-
-
     } catch (err: any) {
       console.error(err);
       triggerError();
-      alert(`DEBATE ENGINE ERROR: ${err.message}`);
+      alert(`DEBATE ENGINE ERROR [${provider}]: ${err.message}`);
     } finally {
       setIsDebating(false);
     }
   };
-
 
   const playTTS = async (textStr: string) => {
     const synth = window.speechSynthesis;
@@ -513,12 +771,12 @@ export default function App() {
     if (voices.length === 0) {
       window.speechSynthesis.onvoiceschanged = () => {
         voices = synth.getVoices();
-        const brutalVoice = voices.find(v => v.name.includes("Google") || v.name.includes("Samantha") || v.name.includes("Karen") || v.name.includes("Daniel")) || voices[0];
+        const brutalVoice = voices.find(v => v.name.includes('Google') || v.name.includes('Samantha') || v.name.includes('Daniel')) || voices[0];
         if (brutalVoice) utterance.voice = brutalVoice;
         synth.speak(utterance);
       };
     } else {
-      const brutalVoice = voices.find(v => v.name.includes("Google") || v.name.includes("Samantha") || v.name.includes("Karen") || v.name.includes("Daniel")) || voices[0];
+      const brutalVoice = voices.find(v => v.name.includes('Google') || v.name.includes('Samantha') || v.name.includes('Daniel')) || voices[0];
       if (brutalVoice) utterance.voice = brutalVoice;
       synth.speak(utterance);
     }
@@ -528,200 +786,496 @@ export default function App() {
     window.speechSynthesis.cancel();
   };
 
+  // Modern Speech-To-Text supporting both native browser Web Speech API & Groq Whisper fallback
   const startSTT = async () => {
-    setIsRecording(true);
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      const audioChunks: Blob[] = [];
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
-      mediaRecorder.addEventListener("dataavailable", event => {
-        audioChunks.push(event.data);
-      });
+    if (SpeechRecognition) {
+      try {
+        setIsRecording(true);
+        const recognition = new SpeechRecognition();
+        recognition.lang = outputLang === 'Spanish' ? 'es-ES' : outputLang === 'French' ? 'fr-FR' : outputLang === 'German' ? 'de-DE' : outputLang === 'Hindi' ? 'hi-IN' : 'en-US';
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
 
-      mediaRecorder.addEventListener("stop", async () => {
-        setIsRecording(false);
-        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          role: 'model',
+          text: '[AUDIO LISTENING TRIGGERED - SPEAK CLEARLY...]',
+          rawText: '[AUDIO LISTENING TRIGGERED - SPEAK CLEARLY...]'
+        }]);
 
-        stream.getTracks().forEach(track => track.stop());
-
-        const formData = new FormData();
-        formData.append("file", audioBlob, "audio.webm");
-        formData.append("model", "whisper-large-v3");
-
-        setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: "[PROCESSING AUDIO DATA VIA GROQ KERNEL...]", rawText: "[PROCESSING AUDIO DATA VIA GROQ KERNEL...]" }]);
-
-        try {
-          const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${apiKey}`
-            },
-            body: formData
+        recognition.onresult = (event: any) => {
+          const transcript = event.results[0][0].transcript;
+          setIsRecording(false);
+          setMessages(prev => {
+            const arr = [...prev];
+            arr.pop();
+            return [...arr, {
+              id: Date.now().toString(),
+              role: 'model',
+              text: `>> VOCAL_INPUT_DECODED: "${transcript}"`,
+              rawText: `>> VOCAL_INPUT_DECODED: "${transcript}"`
+            }];
           });
-          const data = await res.json();
-          if (data.text) {
-            setMessages(prev => {
-              const arr = [...prev];
-              arr.pop();
-              return [...arr, { id: Date.now().toString(), role: 'model', text: `>> VOCAL_INPUT_DECODED: "${data.text}"`, rawText: `>> VOCAL_INPUT_DECODED: "${data.text}"` }];
-            });
-            setInput(data.text);
-          } else {
-            throw new Error(data.error?.message || "STT Failed");
-          }
-        } catch (e) {
+          setInput(transcript);
+        };
+
+        recognition.onerror = (e: any) => {
+          setIsRecording(false);
+          console.error('Speech recognition error', e);
           triggerError();
-          setMessages(prev => [...prev.slice(0, -1), { id: Date.now().toString(), role: 'model', text: ">> FATAL: VOCAL_INPUT_REJECTED // PACKET_LOSS", rawText: ">> FATAL: VOCAL_INPUT_REJECTED // PACKET_LOSS" }]);
-        }
-      });
+          setMessages(prev => [...prev.slice(0, -1), {
+            id: Date.now().toString(),
+            role: 'model',
+            text: `>> VOCAL_INPUT_HALTED: ${e.error || 'MICROPHONE_ERROR'}`,
+            rawText: `>> VOCAL_INPUT_HALTED: ${e.error || 'MICROPHONE_ERROR'}`
+          }]);
+        };
 
-      mediaRecorder.start();
-      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: "[AUDIO TRANSCRIPTION TRIGGERED - LISTENING FOR 5 SECONDS...]", rawText: "[AUDIO TRANSCRIPTION TRIGGERED - LISTENING FOR 5 SECONDS...]" }]);
+        recognition.onend = () => {
+          setIsRecording(false);
+        };
 
-      setTimeout(() => {
-        if (mediaRecorder.state === 'recording') {
-          mediaRecorder.stop();
-        }
-      }, 5000);
+        recognition.start();
+        return;
+      } catch (e) {
+        console.warn('Native speech recognition failed, attempting fallback', e);
+      }
+    }
 
-    } catch (err) {
-      triggerError();
-      setIsRecording(false);
-      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: ">> FATAL: MIC_NOT_FOUND", rawText: ">> FATAL: MIC_NOT_FOUND" }]);
+    // Fallback: Groq Whisper if Groq API key is present
+    if (groqKey) {
+      setIsRecording(true);
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mediaRecorder = new MediaRecorder(stream);
+        const audioChunks: Blob[] = [];
+
+        mediaRecorder.addEventListener('dataavailable', event => {
+          audioChunks.push(event.data);
+        });
+
+        mediaRecorder.addEventListener('stop', async () => {
+          setIsRecording(false);
+          const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+          stream.getTracks().forEach(track => track.stop());
+
+          const formData = new FormData();
+          formData.append('file', audioBlob, 'audio.webm');
+          formData.append('model', 'whisper-large-v3');
+
+          setMessages(prev => [...prev, {
+            id: Date.now().toString(),
+            role: 'model',
+            text: '[PROCESSING AUDIO DATA VIA GROQ WHISPER...]',
+            rawText: '[PROCESSING AUDIO DATA VIA GROQ WHISPER...]'
+          }]);
+
+          try {
+            const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${groqKey}` },
+              body: formData
+            });
+            const data = await res.json();
+            if (data.text) {
+              setMessages(prev => {
+                const arr = [...prev];
+                arr.pop();
+                return [...arr, {
+                  id: Date.now().toString(),
+                  role: 'model',
+                  text: `>> VOCAL_INPUT_DECODED: "${data.text}"`,
+                  rawText: `>> VOCAL_INPUT_DECODED: "${data.text}"`
+                }];
+              });
+              setInput(data.text);
+            } else {
+              throw new Error(data.error?.message || 'STT Failed');
+            }
+          } catch (e: any) {
+            triggerError();
+            setMessages(prev => [...prev.slice(0, -1), {
+              id: Date.now().toString(),
+              role: 'model',
+              text: `>> FATAL: VOCAL_INPUT_REJECTED // ${e.message}`,
+              rawText: `>> FATAL: VOCAL_INPUT_REJECTED // ${e.message}`
+            }]);
+          }
+        });
+
+        mediaRecorder.start();
+        setTimeout(() => {
+          if (mediaRecorder.state === 'recording') mediaRecorder.stop();
+        }, 5000);
+      } catch (err: any) {
+        triggerError();
+        setIsRecording(false);
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          role: 'model',
+          text: `>> FATAL: MIC_ACCESS_DENIED // ${err.message}`,
+          rawText: `>> FATAL: MIC_ACCESS_DENIED // ${err.message}`
+        }]);
+      }
+    } else {
+      alert('Voice STT is not supported on this browser without a Groq Whisper key.');
     }
   };
 
   const handleEmailTransmission = async () => {
     setSmtpError('');
     if (!emailTarget.trim() || !emailTarget.includes('@')) {
-      alert(">> INVALID_TARGET_EMAIL");
+      alert('>> INVALID_TARGET_EMAIL');
       return;
     }
     if (messages.length === 0) {
-      alert(">> NO_DATA_TO_TRANSMIT");
+      alert('>> NO_DATA_TO_TRANSMIT');
       return;
     }
 
-    if (!smtpEmail || !smtpAppPassword) {
-      setSmtpError('ERROR: SMTP_CREDENTIALS_NOT_CONFIGURED');
+    const hasCreds = (smtpEmail && smtpAppPassword) || serverSmtp.configured;
+    if (!hasCreds) {
+      setSmtpError('ERROR: SMTP_CREDENTIALS_NOT_CONFIGURED (Add to .env or drawer below)');
       setShowConfig(true);
       return;
     }
 
     setIsEmailing(true);
-    setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: ">> GENERATING EMAIL PAYLOAD WITH GROQ KERNEL...", rawText: ">> GENERATING EMAIL PAYLOAD WITH GROQ KERNEL..." }]);
-
-    if (!apiKey) {
-      alert(">> GROQ API KEY REQUIRED");
-      setIsEmailing(false);
-      return;
-    }
+    setMessages(prev => [...prev, {
+      id: Date.now().toString(),
+      role: 'model',
+      text: `>> GENERATING EMAIL PAYLOAD WITH ${provider} KERNEL...`,
+      rawText: `>> GENERATING EMAIL PAYLOAD WITH ${provider} KERNEL...`
+    }]);
 
     try {
       const chatHistoryText = messages.map(m => `${m.role.toUpperCase()}: ${m.rawText || m.text}`).join('\n');
+      const sysPrompt = `You are NEXT-GEN AI SYSTEM compiling a session export email.
+Write a structured HTML email summarizing this session.
+Use brutalist inline CSS styling for the HTML (black thick borders, high-contrast yellow/blue accents, monospace font). Format strictly as JSON { "subject": "...", "html": "..." } with no other text.`;
 
-      const apiMessages = [
-        {
-          role: 'system', content: `You are the NEXT-GEN AI SYSTEM compiling a session export email.
-Write a structured HTML email summarizing this session. 
-Use brutalist inline CSS styling for the HTML. Format strictly as JSON { "subject": "...", "html": "..." }` },
-        { role: 'user', content: `Session Data:\n${chatHistoryText}` }
-      ];
+      const rawEmail = await generateAIText(sysPrompt, `Session Data:\n${chatHistoryText}`, true);
+      const emailJson = JSON.parse(rawEmail.match(/\{[\s\S]*\}/)?.[0] || '{"subject":"SYS_OUT","html":"<h1>Session</h1>"}');
 
-      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          messages: apiMessages,
-          response_format: { type: "json_object" }
-        })
+      setMessages(prev => {
+        const n = [...prev];
+        n.pop();
+        return [...n, {
+          id: Date.now().toString(),
+          role: 'model',
+          text: '>> INITIATING_GMAIL_UPLINK...',
+          rawText: '>> INITIATING_GMAIL_UPLINK...'
+        }];
       });
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const bodyPayload: any = {
+        to: emailTarget,
+        subject: emailJson.subject || 'SYS_OUT // NEXT-GEN AI SESSION',
+        html: emailJson.html || '<h1>SYSTEM REPORT</h1>'
+      };
 
-      const data = await res.json();
-      const emailJson = JSON.parse(data.choices[0].message.content.match(/\{[\s\S]*\}/)[0]);
-
-      setMessages(prev => { const n = [...prev]; n.pop(); return [...n, { id: Date.now().toString(), role: 'model', text: ">> INITIATING_GMAIL_UPLINK...", rawText: ">> INITIATING_GMAIL_UPLINK..." }]; });
+      if (smtpEmail && smtpAppPassword) {
+        bodyPayload.auth = { user: smtpEmail, pass: smtpAppPassword };
+      }
 
       const emailRes = await fetch('/api/export-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: emailTarget,
-          subject: emailJson.subject || "SYS_OUT // NEXT-GEN AI SESSION",
-          html: emailJson.html || "<h1>SYSTEM ERROR.</h1>",
-          auth: {
-            user: smtpEmail,
-            pass: smtpAppPassword
-          }
-        })
+        body: JSON.stringify(bodyPayload)
       });
 
       const result = await emailRes.json();
       if (result.success) {
-        setMessages(prev => { const n = [...prev]; n.pop(); return [...n, { id: Date.now().toString(), role: 'model', text: `>> GMAIL_TRANSMISSION_SUCCESS! TARGET: [<span class="math-inline">\{emailTarget\}\]\`, rawText\: \`\>\> GMAIL\_TRANSMISSION\_SUCCESS\! TARGET\: \[</span>{emailTarget}]` }]; });
+        setMessages(prev => {
+          const n = [...prev];
+          n.pop();
+          const succText = `>> GMAIL_TRANSMISSION_SUCCESS! TARGET: [${emailTarget}]`;
+          return [...n, {
+            id: Date.now().toString(),
+            role: 'model',
+            text: succText,
+            rawText: succText
+          }];
+        });
       } else {
         throw new Error(result.error);
       }
     } catch (err: any) {
       triggerError();
-      setMessages(prev => { const n = [...prev]; n.pop(); return [...n, { id: Date.now().toString(), role: 'model', text: `>> GMAIL_TRANSMISSION_FAILED // <span class="math-inline">\{err\.message || String\(err\)\}\`, rawText\: \`\>\> GMAIL\_TRANSMISSION\_FAILED // </span>{err.message || String(err)}` }]; });
+      setMessages(prev => {
+        const n = [...prev];
+        n.pop();
+        const errText = `>> GMAIL_TRANSMISSION_FAILED // ${err.message || String(err)}`;
+        return [...n, {
+          id: Date.now().toString(),
+          role: 'model',
+          text: errText,
+          rawText: errText
+        }];
+      });
     } finally {
       setIsEmailing(false);
     }
   };
 
+  const activeModelDisplay = provider === 'GEMINI' ? geminiModel : provider === 'GROQ' ? groqModel : ollamaModel;
+
   return (
     <div className={`flex flex-col min-h-[calc(100vh-12px)] ${isErrorGlitching ? 'glitch' : ''}`}>
       {scanlineEnabled && <div className="scanlines"></div>}
 
+      {/* AI Kernel Provider Authentication & Settings Modal */}
       {showAuthPopup && (
         <div className="fixed inset-0 bg-black/90 z-[9999] flex items-center justify-center p-4">
-          <div className="bg-white border-[6px] border-black p-8 max-w-lg w-full flex flex-col gap-6" style={{ boxShadow: '12px 12px 0px #000' }}>
-            <div>
-              <h2 className="text-2xl font-black uppercase m-0 leading-tight">KERNEL_AUTHENTICATION_REQUIRED</h2>
-              <p className="text-sm font-bold uppercase opacity-60 mt-2">ENTER GROQ API KEY TO INITIALIZE SYSTEM</p>
+          <div className="bg-white border-[6px] border-black p-6 md:p-8 max-w-xl w-full flex flex-col gap-5" style={{ boxShadow: '12px 12px 0px #000' }}>
+            <div className="flex justify-between items-start">
+              <div>
+                <h2 className="text-2xl font-black uppercase m-0 leading-tight flex items-center gap-2">
+                  <Cpu className="w-6 h-6 text-[#FF2D00]" />
+                  AI_KERNEL_SETUP
+                </h2>
+                <p className="text-xs font-bold uppercase opacity-60 mt-1">
+                  SELECT YOUR AI ENGINE &amp; CONFIGURE ACCESS
+                </p>
+              </div>
+              {hasValidActiveCredentials() && (
+                <button
+                  onClick={() => setShowAuthPopup(false)}
+                  className="bg-black text-white hover:bg-[#FF2D00] px-3 py-1 text-xs font-black uppercase cursor-pointer"
+                >
+                  ✕ CLOSE
+                </button>
+              )}
             </div>
 
-            <div className="flex flex-col gap-2">
-              <input
-                type="password"
-                value={authInput}
-                onChange={(e) => { setAuthInput(e.target.value); setAuthError(false); }}
-                placeholder="sk-..."
-                className="w-full border-[4px] border-black p-4 font-mono text-lg focus:outline-none focus:bg-[#E5E5E5] rounded-none"
-              />
-              {authError && <span className="text-[#FF2D00] text-xs font-bold uppercase animate-pulse">ERROR: NULL_KEY_DETECTED</span>}
+            {/* Provider Switcher Tabs */}
+            <div className="grid grid-cols-3 gap-2 border-[3px] border-black p-1 bg-[#E5E5E5]">
+              <button
+                type="button"
+                onClick={() => handleSelectProvider('GEMINI')}
+                className={`p-2 text-center text-xs font-black uppercase cursor-pointer transition-all ${
+                  provider === 'GEMINI' ? 'bg-[#0047FF] text-white shadow-[2px_2px_0px_#000]' : 'bg-white hover:bg-yellow-200 text-black'
+                }`}
+              >
+                GOOGLE GEMINI
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSelectProvider('GROQ')}
+                className={`p-2 text-center text-xs font-black uppercase cursor-pointer transition-all ${
+                  provider === 'GROQ' ? 'bg-[#FF2D00] text-white shadow-[2px_2px_0px_#000]' : 'bg-white hover:bg-yellow-200 text-black'
+                }`}
+              >
+                GROQ CLOUD
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSelectProvider('OLLAMA')}
+                className={`p-2 text-center text-xs font-black uppercase cursor-pointer transition-all ${
+                  provider === 'OLLAMA' ? 'bg-[#FFE600] text-black shadow-[2px_2px_0px_#000]' : 'bg-white hover:bg-yellow-200 text-black'
+                }`}
+              >
+                LOCAL OLLAMA
+              </button>
             </div>
+
+            {/* Provider Details & Inputs */}
+            {provider === 'GEMINI' && (
+              <div className="flex flex-col gap-3">
+                <div className="bg-[#0047FF]/10 border-[2px] border-[#0047FF] p-3 text-xs">
+                  <span className="font-black text-[#0047FF] block uppercase">PROVIDER: GOOGLE GEMINI (RECOMMENDED)</span>
+                  <span className="text-gray-700 font-mono text-[0.7rem] block mt-1">
+                    Powered by Google&apos;s multimodal generative engine. Free API keys available from Google AI Studio.
+                  </span>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-black uppercase">GEMINI API KEY:</label>
+                  <input
+                    type="password"
+                    value={authTempKey}
+                    onChange={(e) => { setAuthTempKey(e.target.value); setAuthError(null); }}
+                    placeholder={geminiKey ? "Key configured in .env (or enter new key)" : "AIzaSy..."}
+                    className="w-full border-[3px] border-black p-3 font-mono text-sm focus:outline-none focus:bg-[#FFE600]"
+                  />
+                  {geminiKey && (
+                    <span className="text-[0.65rem] text-green-700 font-bold uppercase mt-1">
+                      ✓ ACTIVE KEY DETECTED ({geminiKey.slice(0, 6)}...{geminiKey.slice(-4)})
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-black uppercase">MODEL:</label>
+                  <select
+                    value={geminiModel}
+                    onChange={(e) => { setGeminiModel(e.target.value); localStorage.setItem('GEMINI_MODEL', e.target.value); }}
+                    className="border-[3px] border-black p-2 font-mono text-xs bg-white font-bold uppercase"
+                  >
+                    <option value="gemini-2.5-flash">gemini-2.5-flash (Fast &amp; Powerful)</option>
+                    <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+                    <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+                  </select>
+                </div>
+
+                <a
+                  href="https://aistudio.google.com/apikey"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-bold uppercase text-[#0047FF] hover:underline"
+                >
+                  GET FREE GEMINI API KEY → aistudio.google.com/apikey
+                </a>
+              </div>
+            )}
+
+            {provider === 'GROQ' && (
+              <div className="flex flex-col gap-3">
+                <div className="bg-[#FF2D00]/10 border-[2px] border-[#FF2D00] p-3 text-xs">
+                  <span className="font-black text-[#FF2D00] block uppercase">PROVIDER: GROQ CLOUD (LPU INFERENCE)</span>
+                  <span className="text-gray-700 font-mono text-[0.7rem] block mt-1">
+                    Ultra-fast inference via Groq LPUs running Llama 3.3.
+                  </span>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-black uppercase">GROQ API KEY:</label>
+                  <input
+                    type="password"
+                    value={authTempKey}
+                    onChange={(e) => { setAuthTempKey(e.target.value); setAuthError(null); }}
+                    placeholder={groqKey ? "Key configured in .env (or enter new key)" : "gsk_..."}
+                    className="w-full border-[3px] border-black p-3 font-mono text-sm focus:outline-none focus:bg-[#FFE600]"
+                  />
+                  {groqKey && (
+                    <span className="text-[0.65rem] text-green-700 font-bold uppercase mt-1">
+                      ✓ ACTIVE KEY DETECTED ({groqKey.slice(0, 6)}...{groqKey.slice(-4)})
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-black uppercase">MODEL:</label>
+                  <select
+                    value={groqModel}
+                    onChange={(e) => { setGroqModel(e.target.value); localStorage.setItem('GROQ_MODEL', e.target.value); }}
+                    className="border-[3px] border-black p-2 font-mono text-xs bg-white font-bold uppercase"
+                  >
+                    <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile</option>
+                    <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (Fast / Low Quota)</option>
+                    <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
+                  </select>
+                </div>
+
+                <a
+                  href="https://console.groq.com/keys"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-bold uppercase text-[#FF2D00] hover:underline"
+                >
+                  GET GROQ API KEY → console.groq.com/keys
+                </a>
+              </div>
+            )}
+
+            {provider === 'OLLAMA' && (
+              <div className="flex flex-col gap-3">
+                <div className="bg-[#FFE600]/20 border-[2px] border-black p-3 text-xs">
+                  <span className="font-black block uppercase">PROVIDER: LOCAL OLLAMA (OFFLINE / FREE)</span>
+                  <span className="text-gray-700 font-mono text-[0.7rem] block mt-1">
+                    Connects directly to your local Ollama server. No cloud API key needed!
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between border-[2px] border-black p-2 bg-[#E5E5E5]">
+                  <span className="text-[0.7rem] font-black uppercase">SERVER STATUS:</span>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[0.7rem] font-bold uppercase px-2 py-0.5 border border-black ${ollamaStatus.online ? 'bg-green-400 text-black' : 'bg-red-400 text-white'}`}>
+                      {ollamaStatus.online ? 'ONLINE ✓' : 'OFFLINE ✗'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={checkOllamaStatus}
+                      disabled={isCheckingOllama}
+                      className="border border-black bg-white px-2 py-0.5 text-[0.65rem] font-bold uppercase hover:bg-yellow-200 cursor-pointer"
+                    >
+                      {isCheckingOllama ? 'CHECKING...' : 'RECHECK'}
+                    </button>
+                  </div>
+                </div>
+
+                {!ollamaStatus.online && (
+                  <div className="bg-red-50 border-[2px] border-red-500 p-2 text-[0.65rem] text-red-800 font-mono">
+                    ⚠ Ollama is not detected at {ollamaBaseUrl}.
+                    <br />
+                    To start it in your terminal, run: <span className="font-bold underline">ollama serve</span> or run a model: <span className="font-bold underline">ollama run llama3.2</span>
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-black uppercase">MODEL NAME:</label>
+                  {ollamaStatus.online && ollamaStatus.models.length > 0 ? (
+                    <select
+                      value={ollamaModel}
+                      onChange={(e) => { setOllamaModel(e.target.value); localStorage.setItem('OLLAMA_MODEL', e.target.value); }}
+                      className="border-[3px] border-black p-2 font-mono text-xs bg-white font-bold"
+                    >
+                      {ollamaStatus.models.map(m => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={ollamaModel}
+                      onChange={(e) => { setOllamaModel(e.target.value); localStorage.setItem('OLLAMA_MODEL', e.target.value); }}
+                      placeholder="e.g. llama3.2, mistral, llama3"
+                      className="border-[3px] border-black p-2 font-mono text-xs bg-white focus:outline-none focus:bg-[#FFE600]"
+                    />
+                  )}
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-black uppercase">OLLAMA BASE URL:</label>
+                  <input
+                    type="text"
+                    value={ollamaBaseUrl}
+                    onChange={(e) => { setOllamaBaseUrl(e.target.value); localStorage.setItem('OLLAMA_BASE_URL', e.target.value); }}
+                    className="border-[3px] border-black p-2 font-mono text-xs bg-white focus:outline-none focus:bg-[#FFE600]"
+                  />
+                </div>
+              </div>
+            )}
+
+            {authError && (
+              <div className="bg-[#FF2D00] text-white p-2 text-xs font-bold uppercase animate-pulse border-[2px] border-black">
+                {authError}
+              </div>
+            )}
 
             <button
               onClick={handleAuthSubmit}
-              className="w-full bg-[#FFE600] border-[4px] border-black p-4 font-black uppercase text-xl hover:bg-black hover:text-[#FFE600] transition-colors active:translate-y-1 cursor-pointer"
+              className="w-full bg-[#FFE600] border-[4px] border-black p-4 font-black uppercase text-lg hover:bg-black hover:text-[#FFE600] transition-colors active:translate-y-1 cursor-pointer"
               style={{ boxShadow: '6px 6px 0px #000' }}
             >
-              [AUTHENTICATE]
+              [ACTIVATE_AI_KERNEL]
             </button>
-
-            <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="text-center text-xs font-bold uppercase text-gray-500 hover:text-black mt-2 inline-block w-full">
-              GET API KEY → console.groq.com
-            </a>
           </div>
         </div>
       )}
 
       {/* Header Section */}
-      <header className="bg-[#FFE600] border-black border-b-[3px] p-4 flex justify-between items-center gap-4">
+      <header className="bg-[#FFE600] border-black border-b-[3px] p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-black tracking-tighter uppercase m-0 leading-tight">
             NEXT-GEN AI ASSISTANT SYSTEM
           </h1>
           <div className="flex gap-2 flex-wrap items-center mt-2">
-            <span className="inline-block bg-white border-[3px] border-black px-3 py-1 text-[0.65rem] font-bold uppercase">
-              KERNEL: GROQ / LLAMA-3.3-70B
+            <span className="inline-flex items-center gap-1 bg-white border-[3px] border-black px-3 py-1 text-[0.65rem] font-bold uppercase">
+              <span className={`w-2 h-2 rounded-full ${provider === 'GEMINI' ? 'bg-[#0047FF]' : provider === 'GROQ' ? 'bg-[#FF2D00]' : 'bg-green-500'}`}></span>
+              KERNEL: {provider} / {activeModelDisplay}
             </span>
             <span className="inline-block bg-black text-white border-[3px] border-black px-3 py-1 text-[0.65rem] font-bold uppercase">
               SESSION: {formatTime(sessionTime)}
@@ -729,23 +1283,36 @@ Use brutalist inline CSS styling for the HTML. Format strictly as JSON { "subjec
             <span className="inline-block bg-white border-[3px] border-black px-3 py-1 text-[0.65rem] font-bold uppercase">
               TOKENS: {getTokenCount()}/4096
             </span>
-            <button onClick={() => setIsDarkMode(!isDarkMode)} className="bg-white hover:bg-black hover:text-white border-[3px] border-black px-3 py-1 text-[0.65rem] font-bold uppercase cursor-pointer">
+            <button
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              className="bg-white hover:bg-black hover:text-white border-[3px] border-black px-3 py-1 text-[0.65rem] font-bold uppercase cursor-pointer"
+            >
               {isDarkMode ? 'LIGHT_MODE' : 'DARK_MODE'}
             </button>
-            <button onClick={() => setScanlineEnabled(!scanlineEnabled)} className="bg-white hover:bg-[#FF2D00] hover:text-white border-[3px] border-black px-3 py-1 text-[0.65rem] font-bold uppercase cursor-pointer">
+            <button
+              onClick={() => setScanlineEnabled(!scanlineEnabled)}
+              className="bg-white hover:bg-[#FF2D00] hover:text-white border-[3px] border-black px-3 py-1 text-[0.65rem] font-bold uppercase cursor-pointer"
+            >
               SCANLINE: {scanlineEnabled ? 'ON' : 'OFF'}
             </button>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+
+        <div className="flex items-center gap-2 flex-wrap">
           <button
-            onClick={handleResetApiKey}
-            className="bg-white hover:bg-black hover:text-[#FFE600] text-black border-[3px] border-black px-3 py-2 text-xs font-bold uppercase cursor-pointer transition-colors active:translate-y-1"
+            onClick={handleOpenAuthModal}
+            className="bg-black text-[#FFE600] hover:bg-white hover:text-black border-[3px] border-black px-3 py-2 text-xs font-black uppercase cursor-pointer transition-colors active:translate-y-1"
           >
-            [RESET_API_KEY]
+            [⚙ AI_KERNEL_SETTINGS]
           </button>
-          <div className="hidden xl:block bg-[#FF2D00] text-white border-[3px] border-black px-3 py-2 text-xs font-bold uppercase">
-            ENCRYPTED CONNECTION
+          <button
+            onClick={handleResetCurrentKey}
+            className="bg-white hover:bg-[#FF2D00] hover:text-white text-black border-[3px] border-black px-3 py-2 text-xs font-bold uppercase cursor-pointer transition-colors active:translate-y-1"
+          >
+            [RESET_KEY]
+          </button>
+          <div className="hidden xl:block bg-[#0047FF] text-white border-[3px] border-black px-3 py-2 text-xs font-bold uppercase">
+            ACTIVE: {provider}
           </div>
         </div>
       </header>
@@ -807,7 +1374,9 @@ Use brutalist inline CSS styling for the HTML. Format strictly as JSON { "subjec
           {/* Debate History mapping */}
           {debateHistory.map((round, idx) => (
             <div key={idx} className="flex flex-col gap-4">
-              <div className="text-center font-black uppercase text-[0.7rem] bg-black text-white py-1">&gt;&gt; ROUND {idx + 1}</div>
+              <div className="text-center font-black uppercase text-[0.7rem] bg-black text-white py-1">
+                &gt;&gt; ROUND {idx + 1}
+              </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {/* AGENT A PRO */}
                 <div className="bg-white border-[3px] border-black border-l-[8px] border-l-[#0047FF] flex flex-col">
@@ -848,7 +1417,7 @@ Use brutalist inline CSS styling for the HTML. Format strictly as JSON { "subjec
           {isDebating && debateHistory.length === 0 && (
             <div className="flex-1 flex items-center justify-center border-[3px] border-black border-dashed bg-white opacity-50 p-10 mt-4">
               <div className="font-mono font-black animate-pulse flex flex-col items-center gap-2">
-                <span>[ INITIATING_MULTI_AGENT_SEQUENCE... ]</span>
+                <span>[ INITIATING_MULTI_AGENT_SEQUENCE VIA {provider}... ]</span>
                 <div className="h-2 w-16 bg-black"></div>
               </div>
             </div>
@@ -887,8 +1456,14 @@ Use brutalist inline CSS styling for the HTML. Format strictly as JSON { "subjec
             <div className="grid grid-cols-2 gap-2">
               <div className="flex flex-col gap-1">
                 <label className="font-black uppercase text-[0.65rem]">OUTPUT_LANG:</label>
-                <select value={outputLang} readOnly onChange={(e) => setOutputLang(e.target.value)} className="border-[3px] border-black p-1 bg-white text-[0.65rem] font-bold uppercase focus:outline-none cursor-pointer">
-                  {['English', 'Spanish', 'French', 'German', 'Hindi', 'Arabic', 'Japanese'].map(l => <option key={l} value={l}>{l}</option>)}
+                <select
+                  value={outputLang}
+                  onChange={(e) => setOutputLang(e.target.value)}
+                  className="border-[3px] border-black p-1 bg-white text-[0.65rem] font-bold uppercase focus:outline-none cursor-pointer"
+                >
+                  {['English', 'Spanish', 'French', 'German', 'Hindi', 'Arabic', 'Japanese'].map(l => (
+                    <option key={l} value={l}>{l}</option>
+                  ))}
                 </select>
               </div>
               <div className="flex flex-col gap-1">
@@ -987,14 +1562,13 @@ Use brutalist inline CSS styling for the HTML. Format strictly as JSON { "subjec
             >
               INITIALIZE_AI_SYNTHESIS
             </button>
-
           </section>
 
           {/* Terminal Output */}
           <section className="bg-[#E5E5E5] p-5 flex flex-col gap-3 overflow-hidden">
             <div className="bg-white border-[3px] border-black flex-1 flex flex-col relative overflow-hidden">
               <div className="bg-black text-white px-3 py-1 text-[0.7rem] font-bold uppercase flex justify-between">
-                <span>GEMINI_OUTPUT_STREAM</span>
+                <span>{provider}_OUTPUT_STREAM // {activeModelDisplay}</span>
                 <span>BUFFER: {messages.length}/256</span>
               </div>
               <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-8" ref={scrollRef}>
@@ -1008,7 +1582,7 @@ Use brutalist inline CSS styling for the HTML. Format strictly as JSON { "subjec
                 {isTyping && (
                   <div className="flex gap-2 items-center font-black animate-pulse">
                     <span className="w-2 h-4 bg-black"></span>
-                    <span className="text-xs uppercase">_ANALYSIS_IN_PROGRESS</span>
+                    <span className="text-xs uppercase">_ANALYSIS_IN_PROGRESS VIA {provider}</span>
                   </div>
                 )}
 
@@ -1017,7 +1591,7 @@ Use brutalist inline CSS styling for the HTML. Format strictly as JSON { "subjec
                   return (
                     <div key={m.id} className="flex flex-col gap-2">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-black text-xs uppercase">{m.role === 'user' ? '>_USER' : '>_AI_SYSTEM'}</span>
+                        <span className="font-black text-xs uppercase">{m.role === 'user' ? '>_USER' : `>_${provider}_KERNEL`}</span>
                         {m.role === 'model' && m.complexityMode && (
                           <span className={`text-[0.55rem] font-black border border-black px-1 uppercase ${m.complexityMode === 'ELI5' ? 'bg-[#FFE600] text-black' : 'bg-[#0047FF] text-white'}`}>
                             [ACTIVE_MODE: {m.complexityMode}]
@@ -1106,16 +1680,30 @@ Use brutalist inline CSS styling for the HTML. Format strictly as JSON { "subjec
                       </div>
                       <FactCheckReport report={m.factCheckReport} isOpen={m.isFactCheckOpen} onClose={() => closeFactCheck(m.id)} />
                     </div>
-                  )
+                  );
                 })}
               </div>
             </div>
 
             <div className="flex flex-col gap-3 relative z-10">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <button className="bg-[#0047FF] hover:bg-black text-white p-3 border-[3px] border-black font-bold text-center text-sm cursor-pointer active:translate-y-1">
+                <button
+                  onClick={() => {
+                    if (messages.length > 0) {
+                      const lastMsg = messages[messages.length - 1];
+                      const newSubject = lastMsg.text.split(' ').slice(0, 4).join(' ') || 'Saved Trail';
+                      setKnowledgeTrail(prev => [{
+                        id: Date.now().toString(),
+                        subject: newSubject,
+                        timestamp: new Date().toLocaleTimeString()
+                      }, ...prev].slice(0, 10));
+                    }
+                  }}
+                  className="bg-[#0047FF] hover:bg-black text-white p-3 border-[3px] border-black font-bold text-center text-sm cursor-pointer active:translate-y-1"
+                >
                   [+] SAVE_TO_KNOWLEDGE_TRAIL
                 </button>
+
                 <div className="flex flex-col gap-0 w-full animate-none">
                   <div className="flex bg-white border-[3px] border-black mb-[2px]">
                     <input
@@ -1139,27 +1727,40 @@ Use brutalist inline CSS styling for the HTML. Format strictly as JSON { "subjec
                   <div className="w-full">
                     <button
                       onClick={() => setShowConfig(!showConfig)}
-                      className="bg-black hover:bg-white hover:text-black hover:border-black text-white p-2 border-[3px] border-black font-bold text-[0.7rem] cursor-pointer w-full text-left uppercase transition-colors"
+                      className="bg-black hover:bg-white hover:text-black hover:border-black text-white p-2 border-[3px] border-black font-bold text-[0.7rem] cursor-pointer w-full text-left uppercase transition-colors flex justify-between items-center"
                     >
-                      {showConfig ? '[-] COLLAPSE_SMTP_CREDENTIALS' : '[+] CONFIGURE_SMTP_CREDENTIALS'}
+                      <span>{showConfig ? '[-] COLLAPSE_SMTP_CONFIG' : '[+] CONFIGURE_GMAIL_SMTP'}</span>
+                      <span className="text-[0.6rem]">
+                        {serverSmtp.configured ? 'ENV_READY ✓' : smtpEmail ? 'LOCAL_SET ✓' : 'NOT_SET ✗'}
+                      </span>
                     </button>
                     {showConfig && (
                       <div className="bg-white border-[3px] border-t-0 border-black p-4 flex flex-col gap-3">
+                        {serverSmtp.configured && (
+                          <div className="bg-green-50 border-[2px] border-green-600 p-2 text-xs text-green-900 font-mono">
+                            ✓ Server .env has configured SMTP for: <span className="font-bold">{serverSmtp.user}</span>.
+                            <br />
+                            (You can dispatch emails directly or override credentials below).
+                          </div>
+                        )}
+
                         <div className="flex flex-col gap-1">
                           <label className="text-[0.65rem] font-black uppercase">SENDER_EMAIL:</label>
                           <input
                             type="email"
                             value={smtpEmail}
                             onChange={e => { setSmtpEmail(e.target.value); setSmtpError(''); }}
+                            placeholder={serverSmtp.user || "e.g. user@gmail.com"}
                             className="border-[3px] border-black p-2 bg-[#E5E5E5] focus:outline-none focus:bg-[#FFE600] text-xs font-mono"
                           />
                         </div>
                         <div className="flex flex-col gap-1">
-                          <label className="text-[0.65rem] font-black uppercase">APP_PASSWORD:</label>
+                          <label className="text-[0.65rem] font-black uppercase">GMAIL APP PASSWORD:</label>
                           <input
                             type="password"
                             value={smtpAppPassword}
                             onChange={e => { setSmtpAppPassword(e.target.value); setSmtpError(''); }}
+                            placeholder="16-character app password (xxxx xxxx xxxx xxxx)"
                             className="border-[3px] border-black p-2 bg-[#E5E5E5] focus:outline-none focus:bg-[#FFE600] text-xs font-mono"
                           />
                           <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" className="text-[0.55rem] font-bold text-gray-500 uppercase mt-1 hover:text-[#0047FF]">
@@ -1169,7 +1770,7 @@ Use brutalist inline CSS styling for the HTML. Format strictly as JSON { "subjec
 
                         <div className="border-[2px] border-[#FF2D00] p-2 bg-gray-50 mt-1">
                           <span className="text-[0.55rem] font-black text-[#FF2D00] uppercase block text-center">
-                            [!] CREDENTIALS STORED IN LOCAL BROWSER STORAGE — DO NOT USE ON SHARED DEVICES
+                            [!] YOU CAN ALSO DEFINE GMAIL_USER &amp; GMAIL_APP_PASSWORD DIRECTLY IN YOUR .ENV FILE
                           </span>
                         </div>
 
@@ -1181,8 +1782,8 @@ Use brutalist inline CSS styling for the HTML. Format strictly as JSON { "subjec
                             [CLEAR_CREDENTIALS]
                           </button>
                           <div className="ml-auto text-[0.65rem] font-black uppercase mt-2 w-full text-right sm:w-auto sm:mt-0">
-                            {localStorage.getItem('SMTP_EMAIL') && localStorage.getItem('SMTP_APP_PASSWORD') ? (
-                              <span className="text-green-600">CREDENTIALS: STORED ✓</span>
+                            {(smtpEmail && smtpAppPassword) || serverSmtp.configured ? (
+                              <span className="text-green-600">CREDENTIALS: READY ✓</span>
                             ) : (
                               <span className="text-[#FF2D00]">CREDENTIALS: NOT SET ✗</span>
                             )}
@@ -1197,12 +1798,11 @@ Use brutalist inline CSS styling for the HTML. Format strictly as JSON { "subjec
           </section>
         </div>
       )}
-
     </div>
   );
 }
 
-function NavTab({ active, onClick, label }: { active: boolean, onClick: () => void, label: string }) {
+function NavTab({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
   return (
     <button
       onClick={onClick}
@@ -1227,10 +1827,10 @@ function FactCheckReport({
 
   const verifiedCount = report.filter(r => r.verdict === 'VERIFIED').length;
   const trustScore = report.length > 0 ? Math.round((verifiedCount / report.length) * 100) : 100;
-  
-  let scoreLabel = "MOSTLY_RELIABLE";
-  if (trustScore < 50) scoreLabel = "HIGHLY_UNTASKED";
-  else if (trustScore < 80) scoreLabel = "MIXED_RELIABILITY";
+
+  let scoreLabel = 'MOSTLY_RELIABLE';
+  if (trustScore < 50) scoreLabel = 'HIGHLY_UNTASKED';
+  else if (trustScore < 80) scoreLabel = 'MIXED_RELIABILITY';
 
   return (
     <div className="mt-2 border-l-[4px] border-[#FF2D00] pl-3">
@@ -1240,34 +1840,34 @@ function FactCheckReport({
       <div className="border-[2px] border-t-0 border-black bg-white p-3 flex flex-col gap-3">
         {report.map((item, idx) => (
           <div key={idx} className="flex flex-col md:flex-row gap-2 border-b-[2px] border-dashed border-gray-300 pb-3 last:border-b-0 last:pb-0">
-             <div className="flex-1">
-               <span className="font-black text-[0.65rem] block mb-1">CLAIM:</span>
-               <div className="font-mono text-xs">{item.claim}</div>
-             </div>
-             <div className="w-24 shrink-0">
-               <span className="font-black text-[0.65rem] block mb-1">VERDICT:</span>
-               <div>
-                  <span className={`border-[2px] border-black text-[0.6rem] px-1 font-black uppercase inline-block ${item.verdict === 'VERIFIED' ? 'bg-[#00FF00]' : item.verdict === 'DISPUTED' ? 'bg-[#FF2D00] text-white' : 'bg-[#FFE600]'}`}>
-                    [{item.verdict}]
-                  </span>
-               </div>
-             </div>
-             <div className="flex-1">
-               <span className="font-black text-[0.65rem] block mb-1">REASON:</span>
-               <div className="font-mono text-[0.65rem] text-gray-500">{item.reason}</div>
-             </div>
+            <div className="flex-1">
+              <span className="font-black text-[0.65rem] block mb-1">CLAIM:</span>
+              <div className="font-mono text-xs">{item.claim}</div>
+            </div>
+            <div className="w-24 shrink-0">
+              <span className="font-black text-[0.65rem] block mb-1">VERDICT:</span>
+              <div>
+                <span className={`border-[2px] border-black text-[0.6rem] px-1 font-black uppercase inline-block ${item.verdict === 'VERIFIED' ? 'bg-[#00FF00]' : item.verdict === 'DISPUTED' ? 'bg-[#FF2D00] text-white' : 'bg-[#FFE600]'}`}>
+                  [{item.verdict}]
+                </span>
+              </div>
+            </div>
+            <div className="flex-1">
+              <span className="font-black text-[0.65rem] block mb-1">REASON:</span>
+              <div className="font-mono text-[0.65rem] text-gray-500">{item.reason}</div>
+            </div>
           </div>
         ))}
-        
+
         <div className="mt-2 pt-2 border-t-[2px] border-black flex flex-col gap-1">
-           <div className="font-black text-xs uppercase">TRUST_SCORE: {trustScore}% — {scoreLabel}</div>
-           <div className="h-3 border-[2px] border-black bg-gray-200">
-              <div className={`h-full ${trustScore > 80 ? 'bg-green-500' : (trustScore >= 50 ? 'bg-[#FFE600]' : 'bg-[#FF2D00]')}`} style={{ width: `${trustScore}%` }}></div>
-           </div>
+          <div className="font-black text-xs uppercase">TRUST_SCORE: {trustScore}% — {scoreLabel}</div>
+          <div className="h-3 border-[2px] border-black bg-gray-200">
+            <div className={`h-full ${trustScore > 80 ? 'bg-green-500' : (trustScore >= 50 ? 'bg-[#FFE600]' : 'bg-[#FF2D00]')}`} style={{ width: `${trustScore}%` }}></div>
+          </div>
         </div>
 
-        <button onClick={onClose} className="mt-2 bg-black text-white px-3 py-2 font-black text-xs border-[2px] border-black hover:bg-white hover:text-black transition-colors">
-           [CLOSE_REPORT]
+        <button onClick={onClose} className="mt-2 bg-black text-white px-3 py-2 font-black text-xs border-[2px] border-black hover:bg-white hover:text-black transition-colors cursor-pointer">
+          [CLOSE_REPORT]
         </button>
       </div>
     </div>
