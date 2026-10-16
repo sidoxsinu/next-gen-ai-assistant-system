@@ -213,6 +213,7 @@ export function KnowledgeView({
               CONCEPT_GRAPH
             </button>
             <button
+              data-tour="flashcard-study"
               onClick={() => setActiveTab('FLASHCARDS')}
               className={`px-3 py-1 text-xs font-black uppercase cursor-pointer ${
                 activeTab === 'FLASHCARDS' ? 'bg-[#FFE600] text-black' : 'text-white hover:bg-purple-900'

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Mode } from '../types';
 
 export interface TourStep {
@@ -151,7 +151,7 @@ interface TutorialTourProps {
   onClose: () => void;
   activeMode: Mode;
   setActiveMode: (mode: Mode) => void;
-  filterMode?: Mode | null; // If set, only tour this specific tab
+  filterMode?: Mode | null;
 }
 
 export function TutorialTour({
@@ -161,7 +161,6 @@ export function TutorialTour({
   setActiveMode,
   filterMode = null
 }: TutorialTourProps) {
-  // Filter steps if a specific mode is requested
   const filteredSteps = filterMode
     ? SYSTEM_TOUR_STEPS.filter((s) => s.mode === filterMode || s.mode === 'GLOBAL')
     : SYSTEM_TOUR_STEPS;
@@ -175,39 +174,96 @@ export function TutorialTour({
   } | null>(null);
 
   const currentStep = filteredSteps[currentIndex] || filteredSteps[0];
+  const animFrameRef = useRef<number | null>(null);
 
-  // Update highlight position and auto-switch mode if step belongs to another tab
+  // Measure and position spotlight precisely over the DOM element
+  const measureTarget = useCallback(() => {
+    if (!isOpen || !currentStep) return;
+    const el = document.querySelector(currentStep.targetSelector);
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      setHighlightRect({
+        top: rect.top,
+        left: rect.left,
+        width: rect.width,
+        height: rect.height
+      });
+    } else {
+      setHighlightRect(null);
+    }
+  }, [isOpen, currentStep]);
+
+  // Update spotlight, scroll element into view, and switch mode if needed
   const updateSpotlight = useCallback(() => {
     if (!isOpen || !currentStep) return;
 
-    // Auto-switch mode if needed
     if (currentStep.mode !== 'GLOBAL' && currentStep.mode !== activeMode) {
       setActiveMode(currentStep.mode as Mode);
     }
 
-    // Allow DOM to update after mode switch
-    setTimeout(() => {
+    const checkElement = (attemptsLeft: number) => {
       const el = document.querySelector(currentStep.targetSelector);
       if (el) {
-        const rect = el.getBoundingClientRect();
-        setHighlightRect({
-          top: rect.top,
-          left: rect.left,
-          width: rect.width,
-          height: rect.height
-        });
-        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+        measureTarget();
+      } else if (attemptsLeft > 0) {
+        setTimeout(() => checkElement(attemptsLeft - 1), 60);
       } else {
         setHighlightRect(null);
       }
-    }, 150);
-  }, [isOpen, currentStep, activeMode, setActiveMode]);
+    };
+
+    setTimeout(() => checkElement(5), 100);
+  }, [isOpen, currentStep, activeMode, setActiveMode, measureTarget]);
 
   useEffect(() => {
     updateSpotlight();
-    window.addEventListener('resize', updateSpotlight);
-    return () => window.removeEventListener('resize', updateSpotlight);
   }, [updateSpotlight, currentIndex]);
+
+  // Handle resize and scroll
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleScrollOrResize = () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = requestAnimationFrame(measureTarget);
+    };
+
+    window.addEventListener('resize', handleScrollOrResize);
+    window.addEventListener('scroll', handleScrollOrResize, true);
+
+    return () => {
+      window.removeEventListener('resize', handleScrollOrResize);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    };
+  }, [isOpen, measureTarget]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight' || e.key === 'Enter') {
+        if (currentIndex < filteredSteps.length - 1) {
+          setCurrentIndex((i) => i + 1);
+        } else {
+          localStorage.setItem('system_tutorial_completed', 'true');
+          onClose();
+        }
+      } else if (e.key === 'ArrowLeft') {
+        if (currentIndex > 0) {
+          setCurrentIndex((i) => i - 1);
+        }
+      } else if (e.key === 'Escape') {
+        localStorage.setItem('system_tutorial_completed', 'true');
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, currentIndex, filteredSteps.length, onClose]);
 
   if (!isOpen || !currentStep) return null;
 
@@ -234,31 +290,92 @@ export function TutorialTour({
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-hidden pointer-events-auto">
-      {/* Dark overlay backdrop with spotlight cutout if target exists */}
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-[2px] transition-opacity" />
+  // Dimensions for crystal-clear SVG mask cutout
+  const pad = 6;
+  const targetX = highlightRect ? Math.max(0, highlightRect.left - pad) : 0;
+  const targetY = highlightRect ? Math.max(0, highlightRect.top - pad) : 0;
+  const targetW = highlightRect ? highlightRect.width + pad * 2 : 0;
+  const targetH = highlightRect ? highlightRect.height + pad * 2 : 0;
 
-      {/* Pulsing Brutalist Spotlight Ring */}
+  // Smart positioning: card flips to top if target element is in the bottom half of the screen
+  const isTargetInBottomHalf = highlightRect ? highlightRect.top > window.innerHeight / 2 : false;
+
+  return (
+    <div className="fixed inset-0 z-[100] overflow-hidden pointer-events-auto">
+      {/* 
+        TRUE SVG CUTOUT MASK:
+        Luminance 1 (white) = overlay is drawn (dimmed).
+        Luminance 0 (black at target) = overlay is completely omitted (100% transparent cutout!).
+        The highlighted element receives ZERO darkening and ZERO blur!
+      */}
+      <svg
+        className="fixed inset-0 w-full h-full pointer-events-none z-40"
+        style={{ width: '100vw', height: '100vh' }}
+      >
+        <defs>
+          <mask id="tutorial-spotlight-mask" x="0" y="0" width="100%" height="100%">
+            {/* White canvas = dim everything */}
+            <rect x="0" y="0" width="100%" height="100%" fill="#ffffff" />
+            {/* Black rectangle at target = 100% crystal-clear transparent hole */}
+            {highlightRect && (
+              <rect
+                x={targetX}
+                y={targetY}
+                width={targetW}
+                height={targetH}
+                fill="#000000"
+              />
+            )}
+          </mask>
+        </defs>
+
+        {/* Backdrop overlay masked by the cutout */}
+        <rect
+          x="0"
+          y="0"
+          width="100%"
+          height="100%"
+          fill="rgba(0, 0, 0, 0.72)"
+          mask="url(#tutorial-spotlight-mask)"
+        />
+      </svg>
+
+      {/* Invisible backdrop click-catcher to dismiss or advance */}
+      <div
+        className="fixed inset-0 z-40 pointer-events-auto"
+        onClick={handleDismiss}
+        title="Click to dismiss tour"
+      />
+
+      {/* High-Contrast Brutalist Spotlight Frame around the transparent cutout */}
       {highlightRect && (
         <div
-          className="fixed pointer-events-none transition-all duration-300 z-50 border-[4px] border-[#FFE600] animate-pulse"
+          className="fixed pointer-events-none z-50 border-[4px] border-[#FFE600] transition-all duration-150"
           style={{
-            top: `${Math.max(0, highlightRect.top - 6)}px`,
-            left: `${Math.max(0, highlightRect.left - 6)}px`,
-            width: `${highlightRect.width + 12}px`,
-            height: `${highlightRect.height + 12}px`,
-            boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.65)'
+            top: `${targetY}px`,
+            left: `${targetX}px`,
+            width: `${targetW}px`,
+            height: `${targetH}px`,
+            boxShadow: '0 0 0 2px #000, 0 0 25px rgba(255, 230, 0, 0.95)'
           }}
         >
-          <span className="absolute -top-7 left-0 bg-[#FFE600] text-black font-black text-[0.65rem] px-2 py-0.5 uppercase border border-black shadow-[2px_2px_0_#000]">
+          <span className="absolute -top-7 left-0 bg-[#FFE600] text-black font-black text-[0.65rem] px-2 py-0.5 uppercase border-2 border-black shadow-[2px_2px_0_#000]">
             ⚡ ACTIVE_FOCUS
           </span>
         </div>
       )}
 
-      {/* Floating Brutalist Walkthrough Dialog Card */}
-      <div className="fixed inset-x-4 bottom-6 md:inset-auto md:bottom-8 md:right-8 z-50 max-w-lg w-full flex flex-col pointer-events-auto">
+      {/* Floating Brutalist Walkthrough Dialog Card with Smart Placement */}
+      <div
+        className={`fixed z-50 max-w-lg w-full flex flex-col pointer-events-auto transition-all duration-200
+          ${
+            isTargetInBottomHalf
+              ? 'top-20 right-4 md:right-8'
+              : 'bottom-6 right-4 md:bottom-8 md:right-8'
+          }
+          max-md:bottom-4 max-md:inset-x-4 max-md:top-auto max-md:right-auto
+        `}
+      >
         <div className="bg-white border-[4px] border-black p-5 artistic-shadow flex flex-col gap-3">
           {/* Header Bar */}
           <div className="flex items-center justify-between border-b-[2px] border-black pb-2">
@@ -271,8 +388,8 @@ export function TutorialTour({
               </span>
               <button
                 onClick={handleDismiss}
-                className="text-gray-400 hover:text-black font-black text-sm px-1 cursor-pointer"
-                title="Exit Tour"
+                className="text-gray-500 hover:text-black font-black text-base px-1 cursor-pointer leading-none"
+                title="Exit Tour (Esc)"
               >
                 ✕
               </button>
@@ -320,7 +437,7 @@ export function TutorialTour({
               onClick={handleDismiss}
               className="text-[0.65rem] font-black uppercase text-gray-500 hover:text-black underline cursor-pointer"
             >
-              SKIP_TOUR
+              SKIP_TOUR (ESC)
             </button>
 
             <div className="flex gap-2">
