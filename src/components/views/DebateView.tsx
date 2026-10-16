@@ -1,4 +1,3 @@
-import React from 'react';
 import { AIProvider, DebateRound } from '../../types';
 
 interface DebateViewProps {

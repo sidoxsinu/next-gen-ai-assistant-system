@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Mode,
   AIProvider,
@@ -87,7 +87,6 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [liveSessionActive, setLiveSessionActive] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
 
   // Feature states

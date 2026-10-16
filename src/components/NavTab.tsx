@@ -1,4 +1,3 @@
-import React from 'react';
 import { Mode } from '../types';
 
 interface NavTabProps {

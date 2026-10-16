@@ -1,4 +1,3 @@
-import React from 'react';
 import { ServerSmtpStatus } from '../types';
 
 interface SmtpDrawerProps {
