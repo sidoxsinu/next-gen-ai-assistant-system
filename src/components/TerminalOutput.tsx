@@ -69,10 +69,10 @@ export function TerminalOutput({
                 {m.role === 'model' && m.complexityMode && (
                   <span
                     className={`text-[0.55rem] font-black border border-black px-1 uppercase ${
-                      m.complexityMode === 'ELI5' ? 'bg-[#FFE600] text-black' : 'bg-[#0047FF] text-white'
+                      m.complexityMode === 'SIMPLE' ? 'bg-[#FFE600] text-black' : 'bg-black text-white'
                     }`}
                   >
-                    [ACTIVE_MODE: {m.complexityMode}]
+                    [STYLE: {m.complexityMode}]
                   </span>
                 )}
                 {m.metadata?.tone && (

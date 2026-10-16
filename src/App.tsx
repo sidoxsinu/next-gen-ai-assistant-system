@@ -105,7 +105,7 @@ export default function App() {
   const [pinnedMessageIds, setPinnedMessageIds] = useState<string[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [sessionTime, setSessionTime] = useState(0);
-  const [complexityMode, setComplexityMode] = useState<'ELI5' | 'EXPERT'>('EXPERT');
+  const [complexityMode, setComplexityMode] = useState<'SIMPLE' | 'DETAILED'>('SIMPLE');
 
   // Interactive Tutorial State (defaults to true for first-time users)
   const [showTutorial, setShowTutorial] = useState<boolean>(() => {
@@ -413,25 +413,25 @@ export default function App() {
     try {
       let fullRawText = '';
 
-      let systemPrompt = `You are a helpful AI assistant. Respond strictly in ${outputLang}. Respond in clean, complete, well-formed sentences. DO NOT use markdown formatting like **, ##, or bullet points. Output plain text only.\nAT THE VERY END OF YOUR RESPONSE, YOU MUST APPEND EXACTLY THIS METADATA BLOCK:\n--META--\nTONE: [one word describing tone]\nTAGS: #tag1 #tag2 #tag3\nSUGGESTIONS: [Follow up 1] | [Follow up 2] | [Follow up 3]\nCONFIDENCE: [0-100]`;
+      let systemPrompt = `You are a helpful AI assistant. Respond strictly in ${outputLang}. Respond in clean, clear, well-formed language. Use clean, readable formatting with markdown (bullet points, bold text) when helpful.\nAT THE VERY END OF YOUR RESPONSE, YOU MUST APPEND EXACTLY THIS METADATA BLOCK:\n--META--\nTONE: [one word describing tone]\nTAGS: #tag1 #tag2 #tag3\nSUGGESTIONS: [Follow up 1] | [Follow up 2] | [Follow up 3]\nCONFIDENCE: [0-100]`;
 
       if (activeMode === 'RESEARCH') {
-        systemPrompt = `Act as a Research Assistant. Provide a structured summary with key points and source suggestions. Respond strictly in ${outputLang}. Respond in clean, complete, well-formed sentences. Avoid markdown formatting like ** or ##.\nAT THE VERY END OF YOUR RESPONSE, YOU MUST APPEND EXACTLY THIS METADATA BLOCK:\n--META--\nTONE: [one word]\nTAGS: #tag1 #tag2 #tag3\nSUGGESTIONS: [Follow up 1] | [Follow up 2] | [Follow up 3]\nCONFIDENCE: [0-100]`;
+        systemPrompt = `Act as a Research Assistant. Provide clear, well-structured summaries with key insights and practical sources. Respond strictly in ${outputLang}. Use clean, readable formatting.\nAT THE VERY END OF YOUR RESPONSE, YOU MUST APPEND EXACTLY THIS METADATA BLOCK:\n--META--\nTONE: [one word]\nTAGS: #tag1 #tag2 #tag3\nSUGGESTIONS: [Follow up 1] | [Follow up 2] | [Follow up 3]\nCONFIDENCE: [0-100]`;
       } else if (activeMode === 'SUPPORT') {
-        systemPrompt = `You are an Intelligent Customer Support Chatbot. Handle queries professionally, escalate when needed, and maintain context. Respond strictly in ${outputLang}. Respond in clean, complete sentences without markdown formatting.\nAT THE VERY END OF YOUR RESPONSE, YOU MUST APPEND EXACTLY THIS METADATA BLOCK:\n--META--\nTONE: [one word]\nTAGS: #tag1 #tag2 #tag3\nSUGGESTIONS: [Follow up 1] | [Follow up 2] | [Follow up 3]\nCONFIDENCE: [0-100]`;
+        systemPrompt = `You are an Intelligent Customer Support Assistant. Provide helpful, empathetic, and clear solutions in ${outputLang}. Address the user's issue directly, simply, and professionally.\nAT THE VERY END OF YOUR RESPONSE, YOU MUST APPEND EXACTLY THIS METADATA BLOCK:\n--META--\nTONE: [one word]\nTAGS: #tag1 #tag2 #tag3\nSUGGESTIONS: [Follow up 1] | [Follow up 2] | [Follow up 3]\nCONFIDENCE: [0-100]`;
       } else if (activeMode === 'WORKFLOW') {
-        systemPrompt = `Break this task/workflow into actionable steps. FORMAT YOUR RESPONSE AS A JSON ARRAY OF OBJECTS with fields: id, label, priority (HIGH/MEDIUM/LOW). Also include a clear text explanation before the JSON, without markdown formatting. Respond strictly in ${outputLang}.\nAT THE VERY END OF YOUR RESPONSE, YOU MUST APPEND EXACTLY THIS METADATA BLOCK:\n--META--\nTONE: [one word]\nTAGS: #tag1 #tag2 #tag3\nSUGGESTIONS: [Follow up 1] | [Follow up 2] | [Follow up 3]\nCONFIDENCE: [0-100]`;
+        systemPrompt = `Break this task or workflow into clean, actionable steps. FORMAT YOUR TASK BREAKDOWN AS A JSON ARRAY OF OBJECTS with fields: id, label, priority (HIGH/MEDIUM/LOW). Also include a clear text explanation before or after the JSON in ${outputLang}.\nAT THE VERY END OF YOUR RESPONSE, YOU MUST APPEND EXACTLY THIS METADATA BLOCK:\n--META--\nTONE: [one word]\nTAGS: #tag1 #tag2 #tag3\nSUGGESTIONS: [Follow up 1] | [Follow up 2] | [Follow up 3]\nCONFIDENCE: [0-100]`;
       } else if (activeMode === 'KNOWLEDGE') {
         const context = `User Preferences: ${userPreferences.join(', ')}. Knowledge Trail: ${knowledgeTrail
           .map(k => k.subject)
           .join(' -> ')}.`;
-        systemPrompt = `${context}\n\nAct as a Personal Knowledge Companion. Explore topics, suggest related areas, and detect any new user preferences. Respond strictly in ${outputLang}. Respond in clean, complete, well-formed sentences. Avoid markdown formatting.\nAT THE VERY END OF YOUR RESPONSE, YOU MUST APPEND EXACTLY THIS METADATA BLOCK:\n--META--\nTONE: [one word]\nTAGS: #tag1 #tag2 #tag3\nSUGGESTIONS: [Follow up 1] | [Follow up 2] | [Follow up 3]\nCONFIDENCE: [0-100]`;
+        systemPrompt = `${context}\n\nAct as a Personal Knowledge Companion. Explore topics, explain concepts clearly and intuitively, and highlight key ideas in ${outputLang}.\nAT THE VERY END OF YOUR RESPONSE, YOU MUST APPEND EXACTLY THIS METADATA BLOCK:\n--META--\nTONE: [one word]\nTAGS: #tag1 #tag2 #tag3\nSUGGESTIONS: [Follow up 1] | [Follow up 2] | [Follow up 3]\nCONFIDENCE: [0-100]`;
       }
 
-      if (complexityMode === 'ELI5') {
-        systemPrompt += `\n>> INSTRUCTION: Explain everything as if talking to a 5-year-old using simple words, fun analogies, and zero jargon.`;
+      if (complexityMode === 'SIMPLE') {
+        systemPrompt += `\n>> RESPONSE STYLE: Respond in clear, simple, concise, and direct language. Avoid unnecessary jargon, keep your explanation straightforward, and never use childish baby talk or condescending analogies. Keep it practical, clear, and easy to understand.`;
       } else {
-        systemPrompt += `\n>> INSTRUCTION: Respond at a PhD/research level using high-level technical terminology, citation style, and deep analytical reasoning.`;
+        systemPrompt += `\n>> RESPONSE STYLE: Provide a thorough, comprehensive response with clear step-by-step explanations, while keeping language direct, accessible, and grounded.`;
       }
 
       await generateAIStream({

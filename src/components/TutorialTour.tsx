@@ -54,7 +54,7 @@ export const SYSTEM_TOUR_STEPS: TourStep[] = [
     title: 'ACADEMIC INQUIRY MACROS',
     description:
       'One-click triggers to run systematic literature reviews, search peer-reviewed citations, critique empirical methodologies, or extract statistical findings.',
-    proTip: 'Combine quick macros with [EXPERT_MODE] for PhD-level thesis analysis.'
+    proTip: 'Combine quick macros with [STYLE: DETAILED] for thorough, in-depth analysis.'
   },
   // 5. Research - Evidence Board
   {

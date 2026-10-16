@@ -27,7 +27,7 @@ export interface Message {
   type?: 'text' | 'image' | 'audio' | 'thinking' | 'workflow';
   data?: any;
   metadata?: MessageMetadata;
-  complexityMode?: 'ELI5' | 'EXPERT';
+  complexityMode?: 'SIMPLE' | 'DETAILED';
   factCheckReport?: FactCheckItem[];
   isFactChecking?: boolean;
   isFactCheckOpen?: boolean;

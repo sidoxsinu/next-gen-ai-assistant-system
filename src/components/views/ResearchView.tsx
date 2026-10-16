@@ -35,8 +35,8 @@ interface ResearchViewProps {
   loadHistory: () => void;
   startSTT: () => void;
   isRecording: boolean;
-  complexityMode: 'ELI5' | 'EXPERT';
-  setComplexityMode: (val: 'ELI5' | 'EXPERT') => void;
+  complexityMode: 'SIMPLE' | 'DETAILED';
+  setComplexityMode: (val: 'SIMPLE' | 'DETAILED') => void;
   haltTTS: () => void;
   // Email / SMTP
   emailTarget: string;
@@ -322,12 +322,13 @@ export function ResearchView({
               {isRecording ? 'LISTENING...' : 'VOICE_STT'}
             </button>
             <button
-              onClick={() => setComplexityMode(complexityMode === 'EXPERT' ? 'ELI5' : 'EXPERT')}
-              className={`border-[2px] border-black p-2 font-black text-[0.65rem] uppercase active:translate-y-0.5 ${
-                complexityMode === 'EXPERT' ? 'bg-[#0047FF] text-white' : 'bg-[#FFE600] text-black'
+              onClick={() => setComplexityMode(complexityMode === 'SIMPLE' ? 'DETAILED' : 'SIMPLE')}
+              className={`border-[2px] border-black p-2 font-black text-[0.65rem] uppercase active:translate-y-0.5 cursor-pointer ${
+                complexityMode === 'SIMPLE' ? 'bg-[#FFE600] text-black' : 'bg-[#0047FF] text-white'
               }`}
+              title="Toggle response style: Simple (Clear & Concise) vs Detailed (In-depth)"
             >
-              [{complexityMode}]
+              STYLE: {complexityMode}
             </button>
           </div>
 
