@@ -38,12 +38,47 @@ export interface WorkflowTask {
   label: string;
   priority: 'HIGH' | 'MEDIUM' | 'LOW';
   completed: boolean;
+  stage?: 'STAGED' | 'IN_PROGRESS' | 'DONE';
+  description?: string;
+}
+
+export type CitationStyle = 'APA-7' | 'IEEE' | 'MLA-9' | 'CHICAGO' | 'NATURE';
+
+export type ResearchDepth =
+  | 'QUICK_ABSTRACT'
+  | 'DEEP_LITERATURE_REVIEW'
+  | 'METHODOLOGY_DECONSTRUCT'
+  | 'EMPIRICAL_SYNTHESIS';
+
+export interface ResearchFinding {
+  id: string;
+  claim: string;
+  confidence: number;
+  sourceNote?: string;
+}
+
+export interface SupportTicket {
+  id: string;
+  severity: 'P1 - CRITICAL' | 'P2 - HIGH' | 'P3 - MEDIUM';
+  customerName: string;
+  accountTier: string;
+  slaSecondsRemaining: number;
+  sentiment: 'NEUTRAL' | 'FRUSTRATED' | 'SATISFIED';
+}
+
+export interface Flashcard {
+  id: string;
+  front: string;
+  back: string;
+  category: string;
+  mastered?: boolean;
 }
 
 export interface KnowledgeTrailItem {
   id: string;
   subject: string;
   timestamp: string;
+  tags?: string[];
 }
 
 export interface DebateRound {
@@ -61,3 +96,4 @@ export interface ServerSmtpStatus {
   configured: boolean;
   user: string;
 }
+

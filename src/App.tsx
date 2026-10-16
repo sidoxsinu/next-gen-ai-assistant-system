@@ -19,10 +19,12 @@ import { playTTS, haltTTS, startSTT } from './services/audio';
 import { Header } from './components/Header';
 import { NavTab } from './components/NavTab';
 import { AuthModal } from './components/AuthModal';
-import { DebateView } from './components/DebateView';
-import { Sidebar } from './components/Sidebar';
-import { TerminalOutput } from './components/TerminalOutput';
-import { SmtpDrawer } from './components/SmtpDrawer';
+import { ResearchView } from './components/views/ResearchView';
+import { SupportView } from './components/views/SupportView';
+import { WorkflowView } from './components/views/WorkflowView';
+import { KnowledgeView } from './components/views/KnowledgeView';
+import { DebateView } from './components/views/DebateView';
+
 
 export default function App() {
   // Provider state
@@ -806,28 +808,231 @@ Use brutalist inline CSS styling for the HTML (black thick borders, high-contras
         onResetKey={handleResetCurrentKey}
       />
 
-      {/* Navigation Tabs */}
+      {/* Navigation Tabs with Mode-Specific Branding */}
       <nav className="grid grid-cols-2 md:grid-cols-5 bg-black gap-[3px] border-black border-b-[3px] relative z-10">
         <NavTab
+          mode="RESEARCH"
           active={activeMode === 'RESEARCH'}
           onClick={() => setActiveMode('RESEARCH')}
           label="RESEARCH_ASSISTANT"
         />
-        <NavTab active={activeMode === 'SUPPORT'} onClick={() => setActiveMode('SUPPORT')} label="SUPPORT_BOT" />
         <NavTab
+          mode="SUPPORT"
+          active={activeMode === 'SUPPORT'}
+          onClick={() => setActiveMode('SUPPORT')}
+          label="SUPPORT_BOT"
+        />
+        <NavTab
+          mode="WORKFLOW"
           active={activeMode === 'WORKFLOW'}
           onClick={() => setActiveMode('WORKFLOW')}
           label="WORKFLOW_AUTO"
         />
         <NavTab
+          mode="KNOWLEDGE"
           active={activeMode === 'KNOWLEDGE'}
           onClick={() => setActiveMode('KNOWLEDGE')}
           label="KNOWLEDGE_COMPANION"
         />
-        <NavTab active={activeMode === 'DEBATE'} onClick={() => setActiveMode('DEBATE')} label="DEBATE_MODE" />
+        <NavTab
+          mode="DEBATE"
+          active={activeMode === 'DEBATE'}
+          onClick={() => setActiveMode('DEBATE')}
+          label="DEBATE_MODE"
+        />
       </nav>
 
-      {activeMode === 'DEBATE' ? (
+      {/* Mode-Specific Thematic Views */}
+      {activeMode === 'RESEARCH' && (
+        <ResearchView
+          provider={provider}
+          activeModelDisplay={activeModelDisplay}
+          messages={messages}
+          isTyping={isTyping}
+          scrollRef={scrollRef}
+          onSendMessage={(q) => sendCommand(q)}
+          playTTS={playTTS}
+          copyMessage={copyMessage}
+          copiedId={copiedId}
+          togglePin={togglePin}
+          pinnedMessageIds={pinnedMessageIds}
+          verifyFacts={verifyFacts}
+          closeFactCheck={closeFactCheck}
+          input={input}
+          setInput={setInput}
+          outputLang={outputLang}
+          setOutputLang={setOutputLang}
+          streamSpeed={streamSpeed}
+          setStreamSpeed={setStreamSpeed}
+          exportSession={exportSession}
+          loadHistory={loadHistory}
+          startSTT={handleVoiceInput}
+          isRecording={isRecording}
+          complexityMode={complexityMode}
+          setComplexityMode={setComplexityMode}
+          haltTTS={haltTTS}
+          emailTarget={emailTarget}
+          setEmailTarget={setEmailTarget}
+          handleEmailTransmission={handleEmailTransmission}
+          isEmailing={isEmailing}
+          smtpError={smtpError}
+          showConfig={showConfig}
+          setShowConfig={setShowConfig}
+          serverSmtp={serverSmtp}
+          smtpEmail={smtpEmail}
+          setSmtpEmail={setSmtpEmail}
+          smtpAppPassword={smtpAppPassword}
+          setSmtpAppPassword={setSmtpAppPassword}
+          setSmtpError={setSmtpError}
+          saveSmtpCredentials={saveSmtpCredentials}
+          clearSmtpCredentials={clearSmtpCredentials}
+        />
+      )}
+
+      {activeMode === 'SUPPORT' && (
+        <SupportView
+          provider={provider}
+          activeModelDisplay={activeModelDisplay}
+          messages={messages}
+          isTyping={isTyping}
+          scrollRef={scrollRef}
+          onSendMessage={(q) => sendCommand(q)}
+          playTTS={playTTS}
+          copyMessage={copyMessage}
+          copiedId={copiedId}
+          togglePin={togglePin}
+          pinnedMessageIds={pinnedMessageIds}
+          verifyFacts={verifyFacts}
+          closeFactCheck={closeFactCheck}
+          input={input}
+          setInput={setInput}
+          outputLang={outputLang}
+          setOutputLang={setOutputLang}
+          streamSpeed={streamSpeed}
+          setStreamSpeed={setStreamSpeed}
+          exportSession={exportSession}
+          loadHistory={loadHistory}
+          startSTT={handleVoiceInput}
+          isRecording={isRecording}
+          complexityMode={complexityMode}
+          setComplexityMode={setComplexityMode}
+          haltTTS={haltTTS}
+          emailTarget={emailTarget}
+          setEmailTarget={setEmailTarget}
+          handleEmailTransmission={handleEmailTransmission}
+          isEmailing={isEmailing}
+          smtpError={smtpError}
+          showConfig={showConfig}
+          setShowConfig={setShowConfig}
+          serverSmtp={serverSmtp}
+          smtpEmail={smtpEmail}
+          setSmtpEmail={setSmtpEmail}
+          smtpAppPassword={smtpAppPassword}
+          setSmtpAppPassword={setSmtpAppPassword}
+          setSmtpError={setSmtpError}
+          saveSmtpCredentials={saveSmtpCredentials}
+          clearSmtpCredentials={clearSmtpCredentials}
+        />
+      )}
+
+      {activeMode === 'WORKFLOW' && (
+        <WorkflowView
+          provider={provider}
+          activeModelDisplay={activeModelDisplay}
+          messages={messages}
+          isTyping={isTyping}
+          scrollRef={scrollRef}
+          onSendMessage={(q) => sendCommand(q)}
+          playTTS={playTTS}
+          copyMessage={copyMessage}
+          copiedId={copiedId}
+          togglePin={togglePin}
+          pinnedMessageIds={pinnedMessageIds}
+          verifyFacts={verifyFacts}
+          closeFactCheck={closeFactCheck}
+          input={input}
+          setInput={setInput}
+          outputLang={outputLang}
+          setOutputLang={setOutputLang}
+          streamSpeed={streamSpeed}
+          setStreamSpeed={setStreamSpeed}
+          exportSession={exportSession}
+          loadHistory={loadHistory}
+          startSTT={handleVoiceInput}
+          isRecording={isRecording}
+          complexityMode={complexityMode}
+          setComplexityMode={setComplexityMode}
+          haltTTS={haltTTS}
+          activeWorkflow={activeWorkflow}
+          setActiveWorkflow={setActiveWorkflow}
+          toggleTask={toggleTask}
+          emailTarget={emailTarget}
+          setEmailTarget={setEmailTarget}
+          handleEmailTransmission={handleEmailTransmission}
+          isEmailing={isEmailing}
+          smtpError={smtpError}
+          showConfig={showConfig}
+          setShowConfig={setShowConfig}
+          serverSmtp={serverSmtp}
+          smtpEmail={smtpEmail}
+          setSmtpEmail={setSmtpEmail}
+          smtpAppPassword={smtpAppPassword}
+          setSmtpAppPassword={setSmtpAppPassword}
+          setSmtpError={setSmtpError}
+          saveSmtpCredentials={saveSmtpCredentials}
+          clearSmtpCredentials={clearSmtpCredentials}
+        />
+      )}
+
+      {activeMode === 'KNOWLEDGE' && (
+        <KnowledgeView
+          provider={provider}
+          activeModelDisplay={activeModelDisplay}
+          messages={messages}
+          isTyping={isTyping}
+          scrollRef={scrollRef}
+          onSendMessage={(q) => sendCommand(q)}
+          playTTS={playTTS}
+          copyMessage={copyMessage}
+          copiedId={copiedId}
+          togglePin={togglePin}
+          pinnedMessageIds={pinnedMessageIds}
+          verifyFacts={verifyFacts}
+          closeFactCheck={closeFactCheck}
+          input={input}
+          setInput={setInput}
+          outputLang={outputLang}
+          setOutputLang={setOutputLang}
+          streamSpeed={streamSpeed}
+          setStreamSpeed={setStreamSpeed}
+          exportSession={exportSession}
+          loadHistory={loadHistory}
+          startSTT={handleVoiceInput}
+          isRecording={isRecording}
+          complexityMode={complexityMode}
+          setComplexityMode={setComplexityMode}
+          haltTTS={haltTTS}
+          knowledgeTrail={knowledgeTrail}
+          setKnowledgeTrail={setKnowledgeTrail}
+          emailTarget={emailTarget}
+          setEmailTarget={setEmailTarget}
+          handleEmailTransmission={handleEmailTransmission}
+          isEmailing={isEmailing}
+          smtpError={smtpError}
+          showConfig={showConfig}
+          setShowConfig={setShowConfig}
+          serverSmtp={serverSmtp}
+          smtpEmail={smtpEmail}
+          setSmtpEmail={setSmtpEmail}
+          smtpAppPassword={smtpAppPassword}
+          setSmtpAppPassword={setSmtpAppPassword}
+          setSmtpError={setSmtpError}
+          saveSmtpCredentials={saveSmtpCredentials}
+          clearSmtpCredentials={clearSmtpCredentials}
+        />
+      )}
+
+      {activeMode === 'DEBATE' && (
         <DebateView
           debateTopic={debateTopic}
           setDebateTopic={setDebateTopic}
@@ -836,84 +1041,6 @@ Use brutalist inline CSS styling for the HTML (black thick borders, high-contras
           onInitiateDebate={handleInitiateDebate}
           provider={provider}
         />
-      ) : (
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-[350px_1fr] relative z-10">
-          <Sidebar
-            activeMode={activeMode}
-            input={input}
-            setInput={setInput}
-            handleSend={() => sendCommand(input)}
-            outputLang={outputLang}
-            setOutputLang={setOutputLang}
-            streamSpeed={streamSpeed}
-            setStreamSpeed={setStreamSpeed}
-            exportSession={exportSession}
-            loadHistory={loadHistory}
-            pinnedMessageIds={pinnedMessageIds}
-            messages={messages}
-            knowledgeTrail={knowledgeTrail}
-            activeWorkflow={activeWorkflow}
-            toggleTask={toggleTask}
-            liveSessionActive={liveSessionActive}
-            setLiveSessionActive={setLiveSessionActive}
-            startSTT={handleVoiceInput}
-            isRecording={isRecording}
-            complexityMode={complexityMode}
-            setComplexityMode={setComplexityMode}
-            haltTTS={haltTTS}
-            isTyping={isTyping}
-          />
-
-          <section className="bg-[#E5E5E5] p-5 flex flex-col gap-3 overflow-hidden">
-            <TerminalOutput
-              provider={provider}
-              activeModelDisplay={activeModelDisplay}
-              messages={messages}
-              isTyping={isTyping}
-              scrollRef={scrollRef}
-              onFollowUp={(s) => sendCommand(s)}
-              playTTS={playTTS}
-              copyMessage={copyMessage}
-              copiedId={copiedId}
-              togglePin={togglePin}
-              pinnedMessageIds={pinnedMessageIds}
-              verifyFacts={verifyFacts}
-              closeFactCheck={closeFactCheck}
-            />
-
-            <SmtpDrawer
-              onSaveToKnowledgeTrail={() => {
-                if (messages.length > 0) {
-                  const lastMsg = messages[messages.length - 1];
-                  const newSubject = lastMsg.text.split(' ').slice(0, 4).join(' ') || 'Saved Trail';
-                  setKnowledgeTrail(prev => [
-                    {
-                      id: Date.now().toString(),
-                      subject: newSubject,
-                      timestamp: new Date().toLocaleTimeString()
-                    },
-                    ...prev
-                  ].slice(0, 10));
-                }
-              }}
-              emailTarget={emailTarget}
-              setEmailTarget={setEmailTarget}
-              handleEmailTransmission={handleEmailTransmission}
-              isEmailing={isEmailing}
-              smtpError={smtpError}
-              showConfig={showConfig}
-              setShowConfig={setShowConfig}
-              serverSmtp={serverSmtp}
-              smtpEmail={smtpEmail}
-              setSmtpEmail={setSmtpEmail}
-              smtpAppPassword={smtpAppPassword}
-              setSmtpAppPassword={setSmtpAppPassword}
-              setSmtpError={setSmtpError}
-              saveSmtpCredentials={saveSmtpCredentials}
-              clearSmtpCredentials={clearSmtpCredentials}
-            />
-          </section>
-        </div>
       )}
     </div>
   );

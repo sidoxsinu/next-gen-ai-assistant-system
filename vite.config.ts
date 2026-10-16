@@ -124,6 +124,7 @@ export default defineConfig(({ mode }) => {
       }
     ],
     server: {
+      allowedHosts: true,
       proxy: {
         '/ollama-proxy': {
           target: ollamaTarget,
