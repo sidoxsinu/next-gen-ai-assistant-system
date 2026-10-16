@@ -68,9 +68,11 @@ export default function App() {
   );
 
   // Models
-  const [geminiModel, setGeminiModel] = useState<string>(
-    localStorage.getItem('GEMINI_MODEL') || (process.env.GEMINI_MODEL as string) || 'gemini-2.5-flash'
-  );
+  const [geminiModel, setGeminiModel] = useState<string>(() => {
+    const saved = localStorage.getItem('GEMINI_MODEL');
+    if (saved && saved !== 'gemini-2.5-flash') return saved;
+    return (process.env.GEMINI_MODEL as string) || 'gemini-flash-lite-latest';
+  });
   const [groqModel, setGroqModel] = useState<string>(
     localStorage.getItem('GROQ_MODEL') || (process.env.GROQ_MODEL as string) || 'llama-3.3-70b-versatile'
   );
@@ -376,25 +378,40 @@ export default function App() {
   const generateAIText = async (systemPrompt: string, userPrompt: string, jsonMode: boolean = false): Promise<string> => {
     if (provider === 'GEMINI') {
       if (!geminiKey) throw new Error('GEMINI_API_KEY is not set. Please configure in settings.');
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`;
-      const payload: any = {
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ role: 'user', parts: [{ text: userPrompt }] }]
+
+      const tryFetch = async (mName: string) => {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${mName}:generateContent?key=${geminiKey}`;
+        const payload: any = {
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ role: 'user', parts: [{ text: userPrompt }] }]
+        };
+        if (jsonMode) {
+          payload.generationConfig = { responseMimeType: 'application/json' };
+        }
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error?.message || `Gemini API returned HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
       };
-      if (jsonMode) {
-        payload.generationConfig = { responseMimeType: 'application/json' };
+
+      try {
+        return await tryFetch(geminiModel);
+      } catch (err: any) {
+        if (geminiModel !== 'gemini-flash-lite-latest') {
+          console.warn(`Model ${geminiModel} failed, trying fallback gemini-flash-lite-latest...`);
+          setGeminiModel('gemini-flash-lite-latest');
+          localStorage.setItem('GEMINI_MODEL', 'gemini-flash-lite-latest');
+          return await tryFetch('gemini-flash-lite-latest');
+        }
+        throw err;
       }
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error?.message || `Gemini API returned HTTP ${res.status}`);
-      }
-      const data = await res.json();
-      return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     } else if (provider === 'GROQ') {
       if (!groqKey) throw new Error('GROQ_API_KEY is not set. Please configure in settings.');
       const payload: any = {
@@ -520,24 +537,34 @@ export default function App() {
 
       // STREAMING CALL ROUTED BY ACTIVE PROVIDER
       if (provider === 'GEMINI') {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:streamGenerateContent?alt=sse&key=${geminiKey}`;
-        const contents = [
-          ...messages.map(m => ({
-            role: m.role === 'user' ? 'user' : 'model',
-            parts: [{ text: m.rawText || m.text }]
-          })),
-          { role: 'user', parts: [{ text: commandStr }] }
-        ];
+        const fetchStream = async (mName: string) => {
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${mName}:streamGenerateContent?alt=sse&key=${geminiKey}`;
+          const contents = [
+            ...messages.map(m => ({
+              role: m.role === 'user' ? 'user' : 'model',
+              parts: [{ text: m.rawText || m.text }]
+            })),
+            { role: 'user', parts: [{ text: commandStr }] }
+          ];
 
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: systemPrompt }] },
-            contents,
-            generationConfig: { maxOutputTokens: 4096 }
-          })
-        });
+          return fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              systemInstruction: { parts: [{ text: systemPrompt }] },
+              contents,
+              generationConfig: { maxOutputTokens: 4096 }
+            })
+          });
+        };
+
+        let res = await fetchStream(geminiModel);
+        if (!res.ok && geminiModel !== 'gemini-flash-lite-latest') {
+          console.warn(`Gemini stream with ${geminiModel} failed (${res.status}), trying fallback gemini-flash-lite-latest...`);
+          setGeminiModel('gemini-flash-lite-latest');
+          localStorage.setItem('GEMINI_MODEL', 'gemini-flash-lite-latest');
+          res = await fetchStream('gemini-flash-lite-latest');
+        }
 
         if (!res.ok) {
           const errBody = await res.json().catch(() => ({}));
@@ -1114,9 +1141,10 @@ Use brutalist inline CSS styling for the HTML (black thick borders, high-contras
                     onChange={(e) => { setGeminiModel(e.target.value); localStorage.setItem('GEMINI_MODEL', e.target.value); }}
                     className="border-[3px] border-black p-2 font-mono text-xs bg-white font-bold uppercase"
                   >
-                    <option value="gemini-2.5-flash">gemini-2.5-flash (Fast &amp; Powerful)</option>
-                    <option value="gemini-1.5-flash">gemini-1.5-flash</option>
-                    <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+                    <option value="gemini-flash-lite-latest">gemini-flash-lite-latest (Fast &amp; Reliable)</option>
+                    <option value="gemini-3.5-flash">gemini-3.5-flash</option>
+                    <option value="gemini-3.8-flash">gemini-3.8-flash</option>
+                    <option value="gemini-flash-latest">gemini-flash-latest</option>
                   </select>
                 </div>
 
