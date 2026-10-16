@@ -237,7 +237,7 @@ export function KnowledgeView({
         {/* Left Console: Cognitive Profile & Recall Engine */}
         <section className="bg-white border-black border-r-[3px] p-4 flex flex-col gap-4 overflow-y-auto">
           {/* Cognitive Learner Profile */}
-          <div className="border-[2px] border-black p-3 bg-purple-50 flex flex-col gap-2">
+          <div data-tour="learner-profile" className="border-[2px] border-black p-3 bg-purple-50 flex flex-col gap-2">
             <div className="flex items-center justify-between border-b border-black pb-1">
               <span className="font-black uppercase text-[0.7rem] text-[#8B00FF]">
                 COGNITIVE_LEARNER_PROFILE
@@ -379,7 +379,7 @@ export function KnowledgeView({
           {activeTab === 'GRAPH' && (
             <div className="flex-1 flex flex-col gap-4 overflow-y-auto">
               {/* Concept Matrix Box */}
-              <div className="bg-white border-[3px] border-black p-5 shadow-[4px_4px_0_#000]">
+              <div data-tour="concept-matrix" className="bg-white border-[3px] border-black p-5 shadow-[4px_4px_0_#000]">
                 <div className="flex justify-between items-center border-b-2 border-black pb-2 mb-4">
                   <span className="font-black uppercase text-xs text-[#8B00FF]">
                     INTERACTIVE_CONCEPT_NEURAL_PILLS (CLICK TO CONNECT)
@@ -456,7 +456,7 @@ export function KnowledgeView({
           )}
 
           {activeTab === 'FLASHCARDS' && (
-            <div className="flex-1 flex flex-col items-center justify-center p-4">
+            <div data-tour="flashcard-study" className="flex-1 flex flex-col items-center justify-center p-4">
               <div className="w-full max-w-xl bg-white border-[4px] border-black p-6 shadow-[6px_6px_0_#8B00FF] flex flex-col gap-4">
                 <div className="flex justify-between items-center border-b-2 border-black pb-2">
                   <span className="bg-black text-[#FFE600] px-2 py-0.5 font-black text-xs uppercase">

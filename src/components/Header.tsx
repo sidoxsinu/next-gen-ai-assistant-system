@@ -13,6 +13,7 @@ interface HeaderProps {
   setScanlineEnabled: (val: boolean) => void;
   onOpenSettings: () => void;
   onResetKey: () => void;
+  onOpenTour?: () => void;
 }
 
 export function Header({
@@ -26,11 +27,12 @@ export function Header({
   scanlineEnabled,
   setScanlineEnabled,
   onOpenSettings,
-  onResetKey
+  onResetKey,
+  onOpenTour
 }: HeaderProps) {
   return (
     <header className="bg-[#FFE600] border-black border-b-[3px] p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-      <div>
+      <div data-tour="header-telemetry">
         <h1 className="text-2xl md:text-3xl font-black tracking-tighter uppercase m-0 leading-tight">
           NEXT-GEN AI ASSISTANT SYSTEM
         </h1>
@@ -64,7 +66,15 @@ export function Header({
         </div>
       </div>
 
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex items-center gap-2 flex-wrap" data-tour="header-settings">
+        {onOpenTour && (
+          <button
+            onClick={onOpenTour}
+            className="bg-[#0047FF] text-white hover:bg-black hover:text-[#FFE600] border-[3px] border-black px-3 py-2 text-xs font-black uppercase cursor-pointer transition-colors active:translate-y-1 shadow-[2px_2px_0_#000]"
+          >
+            [? SYSTEM_TOUR]
+          </button>
+        )}
         <button
           onClick={onOpenSettings}
           className="bg-black text-[#FFE600] hover:bg-white hover:text-black border-[3px] border-black px-3 py-2 text-xs font-black uppercase cursor-pointer transition-colors active:translate-y-1"

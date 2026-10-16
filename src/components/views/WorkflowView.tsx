@@ -225,7 +225,7 @@ export function WorkflowView({
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Industrial Hazard Telemetry Header */}
-      <div className="bg-[#FFE600] text-black border-b-[3px] border-black p-3 px-5 flex flex-wrap items-center justify-between gap-3 shadow-[0_2px_0_#000]">
+      <div data-tour="pipeline-progress" className="bg-[#FFE600] text-black border-b-[3px] border-black p-3 px-5 flex flex-wrap items-center justify-between gap-3 shadow-[0_2px_0_#000]">
         <div className="flex items-center gap-3">
           <div className="w-6 h-6 border-2 border-black hazard-stripes-sm"></div>
           <span className="bg-black text-[#FFE600] font-black text-xs px-2.5 py-1 tracking-wider uppercase border border-black">
@@ -282,7 +282,7 @@ export function WorkflowView({
         {/* Left Console: Workflow Orchestrator */}
         <section className="bg-white border-black border-r-[3px] p-4 flex flex-col gap-4 overflow-y-auto">
           {/* Pipeline Presets */}
-          <div className="flex flex-col gap-1.5">
+          <div data-tour="workflow-presets" className="flex flex-col gap-1.5">
             <span className="font-black uppercase text-[0.65rem] bg-black text-[#FFE600] px-2 py-0.5 inline-block self-start">
               LOAD_PRESET_PIPELINES:
             </span>
@@ -411,7 +411,7 @@ export function WorkflowView({
         {/* Center: Kanban Execution Board OR Terminal Output */}
         <section className="bg-[#E5E5E5] p-4 flex flex-col gap-3 overflow-hidden">
           {activeTab === 'KANBAN' ? (
-            <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4 overflow-y-auto">
+            <div data-tour="kanban-board" className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4 overflow-y-auto">
               {/* Column 1: Staged */}
               <div className="flex flex-col bg-white border-[3px] border-black overflow-hidden shadow-[4px_4px_0_#000]">
                 <div className="bg-black text-white px-3 py-2 text-xs font-black uppercase flex justify-between items-center border-b-2 border-black">

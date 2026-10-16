@@ -157,7 +157,7 @@ export function ResearchView({
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Academic Dossier Header Bar */}
-      <div className="bg-[#0047FF] text-white border-b-[3px] border-black p-3 px-5 flex flex-wrap items-center justify-between gap-3 shadow-[0_2px_0_#000]">
+      <div data-tour="dossier-bar" className="bg-[#0047FF] text-white border-b-[3px] border-black p-3 px-5 flex flex-wrap items-center justify-between gap-3 shadow-[0_2px_0_#000]">
         <div className="flex items-center gap-3">
           <span className="bg-black text-[#FFE600] font-black text-xs px-2 py-1 tracking-wider uppercase border border-white">
             ACADEMIC_DOSSIER // LAB_SPEC_V4
@@ -242,7 +242,7 @@ export function ResearchView({
           </div>
 
           {/* Quick Inquiry Macros */}
-          <div className="flex flex-col gap-1.5">
+          <div data-tour="research-macros" className="flex flex-col gap-1.5">
             <span className="font-black uppercase text-[0.65rem] bg-black text-white px-2 py-0.5 inline-block self-start">
               QUICK_RESEARCH_MACROS:
             </span>
@@ -410,7 +410,7 @@ export function ResearchView({
 
         {/* Right Auxiliary: Findings & Evidence Board */}
         {showFindingsPanel && (
-          <aside className="w-full lg:w-72 bg-white border-black border-l-[3px] p-4 flex flex-col gap-3 overflow-y-auto">
+          <aside data-tour="evidence-board" className="w-full lg:w-72 bg-white border-black border-l-[3px] p-4 flex flex-col gap-3 overflow-y-auto">
             <div className="flex items-center justify-between border-b-[2px] border-black pb-2">
               <span className="font-black uppercase text-[0.75rem] text-[#0047FF]">
                 EVIDENCE_BOARD ({findings.length})

@@ -24,6 +24,7 @@ import { SupportView } from './components/views/SupportView';
 import { WorkflowView } from './components/views/WorkflowView';
 import { KnowledgeView } from './components/views/KnowledgeView';
 import { DebateView } from './components/views/DebateView';
+import { TutorialTour } from './components/TutorialTour';
 
 
 export default function App() {
@@ -107,10 +108,17 @@ export default function App() {
   const [sessionTime, setSessionTime] = useState(0);
   const [complexityMode, setComplexityMode] = useState<'ELI5' | 'EXPERT'>('EXPERT');
 
+  // Interactive Tutorial State (defaults to true for first-time users)
+  const [showTutorial, setShowTutorial] = useState<boolean>(() => {
+    return !localStorage.getItem('system_tutorial_completed');
+  });
+  const [tutorialFilterMode, setTutorialFilterMode] = useState<Mode | null>(null);
+
   // AI Debate States
   const [debateTopic, setDebateTopic] = useState('');
   const [debateHistory, setDebateHistory] = useState<DebateRound[]>([]);
   const [isDebating, setIsDebating] = useState(false);
+
 
   // SMTP Credentials States
   const [smtpEmail, setSmtpEmail] = useState(localStorage.getItem('SMTP_EMAIL') || '');
@@ -806,10 +814,23 @@ Use brutalist inline CSS styling for the HTML (black thick borders, high-contras
         setScanlineEnabled={setScanlineEnabled}
         onOpenSettings={handleOpenAuthModal}
         onResetKey={handleResetCurrentKey}
+        onOpenTour={() => {
+          setTutorialFilterMode(null);
+          setShowTutorial(true);
+        }}
+      />
+
+      {/* Interactive Spotlight Tutorial for First-Time Users */}
+      <TutorialTour
+        isOpen={showTutorial}
+        onClose={() => setShowTutorial(false)}
+        activeMode={activeMode}
+        setActiveMode={setActiveMode}
+        filterMode={tutorialFilterMode}
       />
 
       {/* Navigation Tabs with Mode-Specific Branding */}
-      <nav className="grid grid-cols-2 md:grid-cols-5 bg-black gap-[3px] border-black border-b-[3px] relative z-10">
+      <nav data-tour="nav-tabs" className="grid grid-cols-2 md:grid-cols-5 bg-black gap-[3px] border-black border-b-[3px] relative z-10">
         <NavTab
           mode="RESEARCH"
           active={activeMode === 'RESEARCH'}

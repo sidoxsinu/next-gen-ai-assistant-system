@@ -144,7 +144,7 @@ export function SupportView({
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Support Incident Ops Telemetry Bar */}
-      <div className="bg-[#00CC44] text-black border-b-[3px] border-black p-3 px-5 flex flex-wrap items-center justify-between gap-3 shadow-[0_2px_0_#000]">
+      <div data-tour="incident-telemetry" className="bg-[#00CC44] text-black border-b-[3px] border-black p-3 px-5 flex flex-wrap items-center justify-between gap-3 shadow-[0_2px_0_#000]">
         <div className="flex items-center gap-3 flex-wrap">
           <span className="bg-black text-[#00CC44] font-black text-xs px-2.5 py-1 tracking-wider uppercase border border-black">
             TICKET #{ticket.id}
@@ -226,7 +226,7 @@ export function SupportView({
         {/* Left Console: Support Desk Cockpit */}
         <section className="bg-white border-black border-r-[3px] p-4 flex flex-col gap-4 overflow-y-auto">
           {/* Customer CRM Context Card */}
-          <div className="border-[2px] border-black p-3 bg-gray-50 flex flex-col gap-1.5 text-[0.68rem] font-mono">
+          <div data-tour="crm-context" className="border-[2px] border-black p-3 bg-gray-50 flex flex-col gap-1.5 text-[0.68rem] font-mono">
             <div className="flex items-center justify-between border-b border-black pb-1">
               <span className="font-black uppercase text-black">CRM_ACCOUNT_TELEMETRY</span>
               <span className="bg-[#00CC44] text-black px-1 font-black text-[0.6rem]">ACTIVE_SLA</span>
@@ -268,7 +268,7 @@ export function SupportView({
           </div>
 
           {/* Rapid Resolution Macros */}
-          <div className="flex flex-col gap-1.5">
+          <div data-tour="support-macros" className="flex flex-col gap-1.5">
             <span className="font-black uppercase text-[0.65rem] bg-black text-[#00CC44] px-2 py-0.5 inline-block self-start">
               SLA_RESOLUTION_MACROS:
             </span>

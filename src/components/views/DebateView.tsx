@@ -28,7 +28,7 @@ export function DebateView({
   return (
     <div className="flex-1 flex flex-col p-4 md:p-6 bg-[#E5E5E5] gap-5 overflow-y-auto">
       {/* Arena Title & Telemetry Header */}
-      <div className="bg-[#FF2D00] text-white border-[3px] border-black p-3 px-5 flex flex-wrap items-center justify-between gap-3 shadow-[4px_4px_0_#000]">
+      <div data-tour="debate-arena" className="bg-[#FF2D00] text-white border-[3px] border-black p-3 px-5 flex flex-wrap items-center justify-between gap-3 shadow-[4px_4px_0_#000]">
         <div className="flex items-center gap-3">
           <span className="bg-black text-[#FFE600] font-black text-xs px-2.5 py-1 tracking-wider uppercase border border-white">
             ADVERSARIAL_DUEL_ARENA // PRO_VS_CON
@@ -53,7 +53,7 @@ export function DebateView({
       </div>
 
       {/* Preset Spicy Debates Launcher */}
-      <div className="bg-white border-[3px] border-black p-4 flex flex-col gap-2 shadow-[4px_4px_0_#000]">
+      <div data-tour="debate-presets" className="bg-white border-[3px] border-black p-4 flex flex-col gap-2 shadow-[4px_4px_0_#000]">
         <span className="font-black uppercase text-xs text-black">
           SELECT_PRESET_ARENA_SHOWDOWN:
         </span>
@@ -75,7 +75,7 @@ export function DebateView({
       </div>
 
       {/* Custom Topic Input Stage */}
-      <div className="bg-white border-[3px] border-black p-5 flex flex-col gap-3 shadow-[4px_4px_0_#000]">
+      <div data-tour="debate-motion" className="bg-white border-[3px] border-black p-5 flex flex-col gap-3 shadow-[4px_4px_0_#000]">
         <label className="font-black uppercase text-sm">ENTER_CUSTOM_DEBATE_MOTION:</label>
         <div className="flex flex-col md:flex-row gap-3">
           <input
