@@ -67,16 +67,16 @@ export const SYSTEM_TOUR_STEPS: TourStep[] = [
       'Pins verified factual claims, empirical findings, and source notes alongside your inquiry stream. Click [EXPORT_BIB] to download a formatted bibliography.',
     proTip: 'Pin your own custom findings to the board by typing in the input box.'
   },
-  // 6. Support - Incident Telemetry
+  // 6. Support - Resolution Desk
   {
     id: 'incident-telemetry',
     targetSelector: '[data-tour="incident-telemetry"]',
     mode: 'SUPPORT',
-    badge: 'SUPPORT // INCIDENT_DESK',
-    title: 'LIVE INCIDENT TELEMETRY & SLA COUNTDOWN',
+    badge: 'SUPPORT // RESOLUTION_DESK',
+    title: 'CUSTOMER SUPPORT & INCIDENT TRIAGE',
     description:
-      'NOC command center featuring live incident ticket numbers (#INC-84920), a real-time ticking SLA breach countdown clock, and customer sentiment tracking.',
-    proTip: 'If the SLA clock falls below 5 minutes, it blinks tactical red alert.'
+      'Configure priority levels (Normal, High, Critical) and incident categories (Technical, Billing, Outage, General) for domain-tailored support assistance.',
+    proTip: 'Use rapid resolution macros to auto-triage tickets or generate root-cause analyses.'
   },
   // 7. Support - Resolution Macros
   {

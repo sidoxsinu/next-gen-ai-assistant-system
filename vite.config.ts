@@ -18,16 +18,68 @@ export default defineConfig(({ mode }) => {
         configureServer(server) {
           server.middlewares.use('/api', express.json());
 
-          // SMTP Status endpoint
-          server.middlewares.use('/api/smtp-status', (req, res, next) => {
-            if (req.method !== 'GET') return next();
-            const configured = !!(env.GMAIL_USER && env.GMAIL_APP_PASSWORD);
-            res.statusCode = 200;
-            res.setHeader('Content-Type', 'application/json');
-            return res.end(JSON.stringify({
-              configured,
-              user: env.GMAIL_USER || ''
-            }));
+          // SMTP Status & Verification endpoint
+          server.middlewares.use('/api/smtp-status', async (req, res, next) => {
+            if (req.method === 'GET') {
+              const configured = !!(env.GMAIL_USER && env.GMAIL_APP_PASSWORD);
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              return res.end(JSON.stringify({
+                configured,
+                user: env.GMAIL_USER || ''
+              }));
+            }
+
+            if (req.method === 'POST') {
+              try {
+                const { user, pass } = (req as any).body || {};
+                const smtpUser = user?.trim() || env.GMAIL_USER?.trim();
+                const rawPass = pass?.trim() || env.GMAIL_APP_PASSWORD?.trim();
+                const smtpPass = rawPass ? rawPass.replace(/\s+/g, '') : '';
+
+                if (!smtpUser || !smtpPass) {
+                  res.statusCode = 400;
+                  res.setHeader('Content-Type', 'application/json');
+                  return res.end(JSON.stringify({
+                    success: false,
+                    error: 'Please enter both your Gmail address and 16-character App Password.'
+                  }));
+                }
+
+                const transporter = nodemailer.createTransport({
+                  host: 'smtp.gmail.com',
+                  port: 465,
+                  secure: true,
+                  auth: { user: smtpUser, pass: smtpPass },
+                  connectionTimeout: 8000,
+                  greetingTimeout: 8000,
+                });
+
+                await transporter.verify();
+
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json');
+                return res.end(JSON.stringify({
+                  success: true,
+                  message: `Gmail SMTP connected and verified for ${smtpUser}!`
+                }));
+              } catch (err: any) {
+                let msg = err.message || String(err);
+                if (
+                  msg.includes('Invalid login') ||
+                  msg.includes('535-5.7.8') ||
+                  msg.includes('BadCredentials') ||
+                  msg.includes('Username and Password not accepted')
+                ) {
+                  msg = 'Invalid Gmail credentials. Use a 16-character App Password from myaccount.google.com/apppasswords, NOT your main account password.';
+                }
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json');
+                return res.end(JSON.stringify({ success: false, error: msg }));
+              }
+            }
+
+            return next();
           });
 
           // Configuration endpoint
@@ -77,37 +129,42 @@ export default defineConfig(({ mode }) => {
             }
             try {
               const { to, subject, html, auth } = (req as any).body || {};
-              if (!to || !subject || !html) {
+              if (!to || !to.includes('@')) {
                 res.statusCode = 400;
                 res.setHeader('Content-Type', 'application/json');
-                return res.end(JSON.stringify({ success: false, error: 'Missing required fields (to, subject, html)' }));
+                return res.end(JSON.stringify({ success: false, error: 'A valid recipient email address is required.' }));
               }
 
-              const smtpUser = auth?.user?.trim() || env.GMAIL_USER;
-              const smtpPass = auth?.pass?.trim() || env.GMAIL_APP_PASSWORD;
+              const smtpUser = auth?.user?.trim() || env.GMAIL_USER?.trim();
+              const rawPass = auth?.pass?.trim() || env.GMAIL_APP_PASSWORD?.trim();
+              const smtpPass = rawPass ? rawPass.replace(/\s+/g, '') : '';
 
               if (!smtpUser || !smtpPass) {
                 res.statusCode = 400;
                 res.setHeader('Content-Type', 'application/json');
                 return res.end(JSON.stringify({
                   success: false,
-                  error: 'SMTP credentials not configured. Please add GMAIL_USER and GMAIL_APP_PASSWORD in .env or configure them in the SMTP drawer.'
+                  error: 'SMTP credentials not configured. Please open [CONFIGURE_GMAIL_SMTP] in the drawer to enter your Gmail and 16-character App Password, or set GMAIL_USER and GMAIL_APP_PASSWORD in environment variables.'
                 }));
               }
 
               const transporter = nodemailer.createTransport({
-                service: 'gmail',
+                host: 'smtp.gmail.com',
+                port: 465,
+                secure: true,
                 auth: {
                   user: smtpUser,
                   pass: smtpPass,
                 },
+                connectionTimeout: 10000,
+                greetingTimeout: 10000,
               });
 
               const info = await transporter.sendMail({
                 from: `"NEXT-GEN AI SYSTEM" <${smtpUser}>`,
                 to,
-                subject,
-                html,
+                subject: subject || 'SYS_OUT // NEXT-GEN AI SESSION REPORT',
+                html: html || '<h1>NEXT-GEN AI SYSTEM REPORT</h1>',
               });
 
               res.statusCode = 200;
@@ -115,9 +172,18 @@ export default defineConfig(({ mode }) => {
               res.end(JSON.stringify({ success: true, messageId: info.messageId }));
             } catch (err: any) {
               console.error("Email Error:", err);
+              let errorMessage = err?.message || String(err);
+              if (
+                errorMessage.includes('Invalid login') ||
+                errorMessage.includes('535-5.7.8') ||
+                errorMessage.includes('BadCredentials') ||
+                errorMessage.includes('Username and Password not accepted')
+              ) {
+                errorMessage = 'Gmail authentication failed. Please make sure you are using a 16-character Google App Password (from myaccount.google.com/apppasswords), NOT your normal Gmail password.';
+              }
               res.statusCode = 500;
               res.setHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify({ success: false, error: err?.message || String(err) }));
+              res.end(JSON.stringify({ success: false, error: errorMessage }));
             }
           });
         }

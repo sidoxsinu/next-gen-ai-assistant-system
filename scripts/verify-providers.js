@@ -101,14 +101,30 @@ async function testOllama() {
 }
 
 async function testSmtp() {
-  const user = process.env.GMAIL_USER;
-  const pass = process.env.GMAIL_APP_PASSWORD;
+  const user = process.env.GMAIL_USER?.trim();
+  const rawPass = process.env.GMAIL_APP_PASSWORD?.trim();
+  const pass = rawPass ? rawPass.replace(/\s+/g, '') : '';
 
   process.stdout.write(`  [4/5] Checking Gmail SMTP Configuration... `);
-  if (user && pass) {
-    console.log(`${colors.green}CONFIGURED (${user}) ✓${colors.reset}`);
-  } else {
-    console.log(`${colors.yellow}NOT SET (Add GMAIL_USER & GMAIL_APP_PASSWORD to .env for email export)${colors.reset}`);
+  if (!user || !pass) {
+    console.log(`${colors.yellow}NOT SET (Configure GMAIL_USER & GMAIL_APP_PASSWORD in .env or via UI drawer)${colors.reset}`);
+    return;
+  }
+
+  try {
+    const { default: nodemailer } = await import("nodemailer");
+    const transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
+      auth: { user, pass },
+      connectionTimeout: 4000,
+      greetingTimeout: 4000
+    });
+    await transporter.verify();
+    console.log(`${colors.green}VERIFIED (${user}) ✓${colors.reset}`);
+  } catch (err) {
+    console.log(`${colors.yellow}AUTH FAILED (${err.message}) - Update App Password via UI or .env${colors.reset}`);
   }
 }
 

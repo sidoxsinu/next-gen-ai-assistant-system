@@ -153,9 +153,13 @@ export default function App() {
   // Initial config checks
   useEffect(() => {
     fetch('/api/smtp-status')
-      .then(res => res.json())
+      .then(async (res) => {
+        if (!res.ok) return null;
+        const text = await res.text();
+        try { return JSON.parse(text); } catch { return null; }
+      })
       .then(data => {
-        if (data.configured) {
+        if (data && data.configured) {
           setServerSmtp({ configured: true, user: data.user || '' });
         }
       })
@@ -643,9 +647,10 @@ export default function App() {
       return;
     }
 
-    const hasCreds = (smtpEmail && smtpAppPassword) || serverSmtp.configured;
+    const senderUser = smtpEmail.trim() || serverSmtp.user;
+    const hasCreds = (senderUser && smtpAppPassword) || (serverSmtp.configured && serverSmtp.user);
     if (!hasCreds) {
-      setSmtpError('ERROR: SMTP_CREDENTIALS_NOT_CONFIGURED (Add to .env or drawer below)');
+      setSmtpError('ERROR: SMTP_CREDENTIALS_NOT_CONFIGURED. Please enter your Gmail address and 16-character App Password below.');
       setShowConfig(true);
       return;
     }
@@ -665,28 +670,44 @@ export default function App() {
       const chatHistoryText = messages.map(m => `${m.role.toUpperCase()}: ${m.rawText || m.text}`).join('\n');
       const sysPrompt = `You are NEXT-GEN AI SYSTEM compiling a session export email.
 Write a structured HTML email summarizing this session.
-Use brutalist inline CSS styling for the HTML (black thick borders, high-contrast yellow/blue accents, monospace font). Format strictly as JSON { "subject": "...", "html": "..." } with no other text.`;
+Use clean, high-contrast styling for the HTML with clear section headers, lists, and monospace font. Format strictly as JSON { "subject": "...", "html": "..." } with no other text.`;
 
-      const rawEmail = await generateAIText({
-        provider,
-        geminiKey,
-        geminiModel,
-        groqKey,
-        groqModel,
-        ollamaModel,
-        ollamaBaseUrl,
-        systemPrompt: sysPrompt,
-        userPrompt: `Session Data:\n${chatHistoryText}`,
-        jsonMode: true,
-        onGeminiModelFallback: (fallback) => {
-          setGeminiModel(fallback);
-          localStorage.setItem('GEMINI_MODEL', fallback);
-        }
-      });
+      let emailJson: any = null;
+      try {
+        const rawEmail = await generateAIText({
+          provider,
+          geminiKey,
+          geminiModel,
+          groqKey,
+          groqModel,
+          ollamaModel,
+          ollamaBaseUrl,
+          systemPrompt: sysPrompt,
+          userPrompt: `Session Data:\n${chatHistoryText}`,
+          jsonMode: true,
+          onGeminiModelFallback: (fallback) => {
+            setGeminiModel(fallback);
+            localStorage.setItem('GEMINI_MODEL', fallback);
+          }
+        });
 
-      const emailJson = JSON.parse(
-        rawEmail.match(/\{[\s\S]*\}/)?.[0] || '{"subject":"SYS_OUT","html":"<h1>Session</h1>"}'
-      );
+        const jsonMatch = rawEmail.match(/\{[\s\S]*\}/)?.[0];
+        if (jsonMatch) emailJson = JSON.parse(jsonMatch);
+      } catch (e) {
+        console.warn('AI formatting fallback to raw transcript', e);
+      }
+
+      if (!emailJson || !emailJson.html) {
+        emailJson = {
+          subject: `SYS_OUT // NEXT-GEN AI SESSION (${activeMode})`,
+          html: `<div style="font-family: monospace; padding: 20px; border: 3px solid black; background: #ffffff;">
+            <h1 style="background: #FFE600; padding: 8px 12px; border: 2px solid black; margin-top: 0;">NEXT-GEN AI SESSION LOG</h1>
+            <p><strong>Mode:</strong> ${activeMode} | <strong>Kernel:</strong> ${provider} (${activeModelDisplay})</p>
+            <hr style="border: 1px solid #000; margin: 15px 0;" />
+            <pre style="white-space: pre-wrap; font-size: 13px; line-height: 1.5;">${chatHistoryText}</pre>
+          </div>`
+        };
+      }
 
       setMessages(prev => {
         const n = [...prev];
@@ -708,8 +729,8 @@ Use brutalist inline CSS styling for the HTML (black thick borders, high-contras
         html: emailJson.html || '<h1>SYSTEM REPORT</h1>'
       };
 
-      if (smtpEmail && smtpAppPassword) {
-        bodyPayload.auth = { user: smtpEmail, pass: smtpAppPassword };
+      if (senderUser && smtpAppPassword) {
+        bodyPayload.auth = { user: senderUser, pass: smtpAppPassword };
       }
 
       const emailRes = await fetch('/api/export-email', {
@@ -718,31 +739,45 @@ Use brutalist inline CSS styling for the HTML (black thick borders, high-contras
         body: JSON.stringify(bodyPayload)
       });
 
-      const result = await emailRes.json();
-      if (result.success) {
-        setMessages(prev => {
-          const n = [...prev];
-          n.pop();
-          const succText = `>> GMAIL_TRANSMISSION_SUCCESS! TARGET: [${emailTarget}]`;
-          return [
-            ...n,
-            {
-              id: Date.now().toString(),
-              role: 'model',
-              text: succText,
-              rawText: succText
-            }
-          ];
-        });
-      } else {
-        throw new Error(result.error);
+      const responseText = await emailRes.text();
+      let result: any;
+      try {
+        result = JSON.parse(responseText);
+      } catch {
+        throw new Error(
+          emailRes.status === 404
+            ? 'API route not found (404). Ensure backend service is deployed.'
+            : `Server returned HTTP ${emailRes.status}: ${responseText.slice(0, 120)}`
+        );
       }
-    } catch (err: any) {
-      triggerError();
+
+      if (!emailRes.ok || !result.success) {
+        throw new Error(result.error || `Email transmission failed (HTTP ${emailRes.status})`);
+      }
+
       setMessages(prev => {
         const n = [...prev];
         n.pop();
-        const errText = `>> GMAIL_TRANSMISSION_FAILED // ${err.message || String(err)}`;
+        const succText = `>> GMAIL_TRANSMISSION_SUCCESS! TARGET: [${emailTarget}]`;
+        return [
+          ...n,
+          {
+            id: Date.now().toString(),
+            role: 'model',
+            text: succText,
+            rawText: succText
+          }
+        ];
+      });
+    } catch (err: any) {
+      triggerError();
+      const errMsg = err.message || String(err);
+      setSmtpError(errMsg);
+      setShowConfig(true);
+      setMessages(prev => {
+        const n = [...prev];
+        n.pop();
+        const errText = `>> GMAIL_TRANSMISSION_FAILED // ${errMsg}`;
         return [
           ...n,
           {

@@ -82,7 +82,6 @@ export function WorkflowView({
   haltTTS,
   activeWorkflow,
   setActiveWorkflow,
-  toggleTask,
   emailTarget,
   setEmailTarget,
   handleEmailTransmission,
@@ -103,41 +102,8 @@ export function WorkflowView({
   const [newStepPriority, setNewStepPriority] = useState<'HIGH' | 'MEDIUM' | 'LOW'>('HIGH');
   const [activeTab, setActiveTab] = useState<'KANBAN' | 'LOGS'>('KANBAN');
 
-  // Pre-populate if empty
-  const defaultTasks: WorkflowTask[] = [
-    {
-      id: 't-1',
-      label: 'Build container images & pass unit test suite',
-      priority: 'HIGH',
-      completed: true,
-      stage: 'DONE'
-    },
-    {
-      id: 't-2',
-      label: 'Run database migration in staging environment',
-      priority: 'HIGH',
-      completed: false,
-      stage: 'IN_PROGRESS'
-    },
-    {
-      id: 't-3',
-      label: 'Verify API backward-compatibility contract',
-      priority: 'MEDIUM',
-      completed: false,
-      stage: 'STAGED'
-    },
-    {
-      id: 't-4',
-      label: 'Trigger blue/green canary rollout on production',
-      priority: 'HIGH',
-      completed: false,
-      stage: 'STAGED'
-    }
-  ];
-
-  const currentTasks = activeWorkflow.length > 0 ? activeWorkflow : defaultTasks;
-  const completedCount = currentTasks.filter((t) => t.completed || t.stage === 'DONE').length;
-  const totalCount = currentTasks.length;
+  const completedCount = activeWorkflow.filter((t) => t.completed || t.stage === 'DONE').length;
+  const totalCount = activeWorkflow.length;
   const progressPct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
   const handleAddNewTask = () => {
@@ -149,28 +115,24 @@ export function WorkflowView({
       completed: false,
       stage: 'STAGED'
     };
-    setActiveWorkflow((prev) => (prev.length > 0 ? [...prev, newTask] : [...defaultTasks, newTask]));
+    setActiveWorkflow((prev) => [...prev, newTask]);
     setNewStepLabel('');
   };
 
   const handleAdvanceTask = (id: string) => {
-    setActiveWorkflow((prev) => {
-      const base = prev.length > 0 ? prev : defaultTasks;
-      return base.map((t) => {
+    setActiveWorkflow((prev) =>
+      prev.map((t) => {
         if (t.id !== id) return t;
         const currentStage = t.stage || (t.completed ? 'DONE' : 'STAGED');
         if (currentStage === 'STAGED') return { ...t, stage: 'IN_PROGRESS', completed: false };
         if (currentStage === 'IN_PROGRESS') return { ...t, stage: 'DONE', completed: true };
         return { ...t, stage: 'STAGED', completed: false };
-      });
-    });
+      })
+    );
   };
 
   const handleDeleteTask = (id: string) => {
-    setActiveWorkflow((prev) => {
-      const base = prev.length > 0 ? prev : defaultTasks;
-      return base.filter((t) => t.id !== id);
-    });
+    setActiveWorkflow((prev) => prev.filter((t) => t.id !== id));
   };
 
   const handleExecuteStepWithAI = (task: WorkflowTask) => {
@@ -183,31 +145,28 @@ export function WorkflowView({
   const handleLoadPreset = (presetName: string) => {
     if (presetName === 'CICD') {
       setActiveWorkflow([
-        { id: 'c-1', label: '1. Linting & Typecheck (tsc --noEmit)', priority: 'HIGH', completed: true, stage: 'DONE' },
-        { id: 'c-2', label: '2. Run Provider Verification (npm test)', priority: 'HIGH', completed: false, stage: 'IN_PROGRESS' },
+        { id: 'c-1', label: '1. Linting & Typecheck (tsc --noEmit)', priority: 'HIGH', completed: false, stage: 'STAGED' },
+        { id: 'c-2', label: '2. Run Provider Verification (npm test)', priority: 'HIGH', completed: false, stage: 'STAGED' },
         { id: 'c-3', label: '3. Build Production Bundle (vite build)', priority: 'HIGH', completed: false, stage: 'STAGED' },
-        { id: 'c-4', label: '4. Run E2E Health Check Endpoint', priority: 'MEDIUM', completed: false, stage: 'STAGED' },
-        { id: 'c-5', label: '5. Promote Canary to 100% Traffic', priority: 'HIGH', completed: false, stage: 'STAGED' }
+        { id: 'c-4', label: '4. Run Health Check Verification', priority: 'MEDIUM', completed: false, stage: 'STAGED' }
       ]);
     } else if (presetName === 'SECURITY') {
       setActiveWorkflow([
-        { id: 's-1', label: '1. Audit package.json dependencies for CVEs', priority: 'HIGH', completed: true, stage: 'DONE' },
-        { id: 's-2', label: '2. Scan git commit logs for exposed API keys', priority: 'HIGH', completed: true, stage: 'DONE' },
-        { id: 's-3', label: '3. Verify CORS & SSR Proxy headers', priority: 'MEDIUM', completed: false, stage: 'IN_PROGRESS' },
-        { id: 's-4', label: '4. Penetration testing against auth endpoints', priority: 'HIGH', completed: false, stage: 'STAGED' }
+        { id: 's-1', label: '1. Audit package.json dependencies for CVEs', priority: 'HIGH', completed: false, stage: 'STAGED' },
+        { id: 's-2', label: '2. Scan codebase for exposed API keys', priority: 'HIGH', completed: false, stage: 'STAGED' },
+        { id: 's-3', label: '3. Verify CORS & environment variable scoping', priority: 'MEDIUM', completed: false, stage: 'STAGED' }
       ]);
     } else if (presetName === 'REFACTOR') {
       setActiveWorkflow([
-        { id: 'r-1', label: '1. Decouple monolith App.tsx into view components', priority: 'HIGH', completed: true, stage: 'DONE' },
-        { id: 'r-2', label: '2. Consolidate shared interfaces into src/types', priority: 'HIGH', completed: true, stage: 'DONE' },
-        { id: 'r-3', label: '3. Implement themed tab layouts with neo-brutalist styling', priority: 'HIGH', completed: false, stage: 'IN_PROGRESS' },
-        { id: 'r-4', label: '4. Run build and type check verification', priority: 'HIGH', completed: false, stage: 'STAGED' }
+        { id: 'r-1', label: '1. Identify monolithic functions and duplicated state', priority: 'HIGH', completed: false, stage: 'STAGED' },
+        { id: 'r-2', label: '2. Extract shared interfaces and services', priority: 'HIGH', completed: false, stage: 'STAGED' },
+        { id: 'r-3', label: '3. Verify build, linting, and tests pass cleanly', priority: 'HIGH', completed: false, stage: 'STAGED' }
       ]);
     }
   };
 
   const exportWorkflowJson = () => {
-    const dataStr = JSON.stringify(currentTasks, null, 2);
+    const dataStr = JSON.stringify(activeWorkflow, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -218,21 +177,21 @@ export function WorkflowView({
   };
 
   // Group into Kanban columns
-  const stagedTasks = currentTasks.filter((t) => (!t.stage || t.stage === 'STAGED') && !t.completed);
-  const inProgressTasks = currentTasks.filter((t) => t.stage === 'IN_PROGRESS' && !t.completed);
-  const doneTasks = currentTasks.filter((t) => t.stage === 'DONE' || t.completed);
+  const stagedTasks = activeWorkflow.filter((t) => (!t.stage || t.stage === 'STAGED') && !t.completed);
+  const inProgressTasks = activeWorkflow.filter((t) => t.stage === 'IN_PROGRESS' && !t.completed);
+  const doneTasks = activeWorkflow.filter((t) => t.stage === 'DONE' || t.completed);
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Industrial Hazard Telemetry Header */}
+      {/* Industrial Header */}
       <div data-tour="pipeline-progress" className="bg-[#FFE600] text-black border-b-[3px] border-black p-3 px-5 flex flex-wrap items-center justify-between gap-3 shadow-[0_2px_0_#000]">
         <div className="flex items-center gap-3">
           <div className="w-6 h-6 border-2 border-black hazard-stripes-sm"></div>
           <span className="bg-black text-[#FFE600] font-black text-xs px-2.5 py-1 tracking-wider uppercase border border-black">
-            PIPELINE_RUNNER // INDUSTRIAL_V2
+            PIPELINE_RUNNER // TASK_ORCHESTRATOR
           </span>
           <span className="font-black text-xs uppercase hidden md:inline">
-            AUTOMATED KANBAN & TASK ORCHESTRATION ENGINE
+            AUTOMATED KANBAN &amp; WORKFLOW SYNTHESIS ENGINE
           </span>
         </div>
 
@@ -268,12 +227,14 @@ export function WorkflowView({
             </button>
           </div>
 
-          <button
-            onClick={exportWorkflowJson}
-            className="bg-black text-white px-2 py-1 font-bold uppercase text-[0.7rem] hover:bg-gray-800 border border-black"
-          >
-            EXPORT_JSON
-          </button>
+          {activeWorkflow.length > 0 && (
+            <button
+              onClick={exportWorkflowJson}
+              className="bg-black text-white px-2 py-1 font-bold uppercase text-[0.7rem] hover:bg-gray-800 border border-black cursor-pointer"
+            >
+              EXPORT_JSON
+            </button>
+          )}
         </div>
       </div>
 
@@ -284,24 +245,24 @@ export function WorkflowView({
           {/* Pipeline Presets */}
           <div data-tour="workflow-presets" className="flex flex-col gap-1.5">
             <span className="font-black uppercase text-[0.65rem] bg-black text-[#FFE600] px-2 py-0.5 inline-block self-start">
-              LOAD_PRESET_PIPELINES:
+              LOAD_STARTER_PRESETS:
             </span>
             <div className="grid grid-cols-1 gap-1">
               <button
                 onClick={() => handleLoadPreset('CICD')}
-                className="text-left border-[2px] border-black p-1.5 bg-white hover:bg-[#FFE600] text-[0.65rem] font-bold uppercase active:translate-y-0.5 transition-all"
+                className="text-left border-[2px] border-black p-1.5 bg-white hover:bg-[#FFE600] text-[0.65rem] font-bold uppercase active:translate-y-0.5 transition-all cursor-pointer"
               >
-                [⚡ CI/CD PRODUCTION DEPLOY]
+                [⚡ CI/CD PRODUCTION PIPELINE]
               </button>
               <button
                 onClick={() => handleLoadPreset('REFACTOR')}
-                className="text-left border-[2px] border-black p-1.5 bg-white hover:bg-[#FFE600] text-[0.65rem] font-bold uppercase active:translate-y-0.5 transition-all"
+                className="text-left border-[2px] border-black p-1.5 bg-white hover:bg-[#FFE600] text-[0.65rem] font-bold uppercase active:translate-y-0.5 transition-all cursor-pointer"
               >
-                [⚡ SYSTEM REFACTOR PIPELINE]
+                [⚡ SYSTEM REFACTOR WORKFLOW]
               </button>
               <button
                 onClick={() => handleLoadPreset('SECURITY')}
-                className="text-left border-[2px] border-black p-1.5 bg-white hover:bg-[#FFE600] text-[0.65rem] font-bold uppercase active:translate-y-0.5 transition-all"
+                className="text-left border-[2px] border-black p-1.5 bg-white hover:bg-[#FFE600] text-[0.65rem] font-bold uppercase active:translate-y-0.5 transition-all cursor-pointer"
               >
                 [⚡ SECURITY COMPLIANCE AUDIT]
               </button>
@@ -327,7 +288,7 @@ export function WorkflowView({
               <select
                 value={newStepPriority}
                 onChange={(e) => setNewStepPriority(e.target.value as any)}
-                className="border-[2px] border-black p-1 bg-white text-xs font-bold uppercase"
+                className="border-[2px] border-black p-1 bg-white text-xs font-bold uppercase cursor-pointer"
               >
                 <option value="HIGH">HIGH_PRIORITY</option>
                 <option value="MEDIUM">MEDIUM_PRIORITY</option>
@@ -335,7 +296,7 @@ export function WorkflowView({
               </select>
               <button
                 onClick={handleAddNewTask}
-                className="flex-1 bg-black text-[#FFE600] border-[2px] border-black font-black text-xs uppercase p-1 hover:bg-gray-800"
+                className="flex-1 bg-black text-[#FFE600] border-[2px] border-black font-black text-xs uppercase p-1 hover:bg-gray-800 cursor-pointer"
               >
                 ADD_STEP
               </button>
@@ -364,7 +325,7 @@ export function WorkflowView({
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={startSTT}
-              className={`border-[2px] border-black p-2 font-bold text-[0.65rem] uppercase active:translate-y-0.5 ${
+              className={`border-[2px] border-black p-2 font-bold text-[0.65rem] uppercase active:translate-y-0.5 cursor-pointer ${
                 isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-white hover:bg-gray-100'
               }`}
             >
@@ -375,7 +336,7 @@ export function WorkflowView({
               className={`border-[2px] border-black p-2 font-black text-[0.65rem] uppercase active:translate-y-0.5 cursor-pointer ${
                 complexityMode === 'SIMPLE' ? 'bg-[#FFE600] text-black' : 'bg-black text-[#FFE600]'
               }`}
-              title="Toggle response style: Simple (Clear & Concise) vs Detailed (In-depth)"
+              title="Toggle response style: Simple (Concise) vs Detailed (In-depth)"
             >
               STYLE: {complexityMode}
             </button>
@@ -384,13 +345,13 @@ export function WorkflowView({
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={exportSession}
-              className="border-[2px] border-black p-1.5 bg-black text-white hover:bg-[#FFE600] hover:text-black text-[0.65rem] font-bold uppercase active:translate-y-0.5"
+              className="border-[2px] border-black p-1.5 bg-black text-white hover:bg-[#FFE600] hover:text-black text-[0.65rem] font-bold uppercase active:translate-y-0.5 cursor-pointer"
             >
               EXPORT_LOGS
             </button>
             <button
               onClick={loadHistory}
-              className="border-[2px] border-black p-1.5 bg-white text-black hover:bg-[#FFE600] text-[0.65rem] font-bold uppercase active:translate-y-0.5"
+              className="border-[2px] border-black p-1.5 bg-white text-black hover:bg-[#FFE600] text-[0.65rem] font-bold uppercase active:translate-y-0.5 cursor-pointer"
             >
               LOAD_HISTORY
             </button>
@@ -403,7 +364,7 @@ export function WorkflowView({
               onSendMessage(input);
             }}
             disabled={isTyping || !input.trim()}
-            className="bg-[#FFE600] text-black border-[3px] border-black p-3 font-black text-center uppercase artistic-shadow artistic-shadow-active disabled:opacity-50 disabled:cursor-not-allowed hover:bg-yellow-400"
+            className="bg-[#FFE600] text-black border-[3px] border-black p-3 font-black text-center uppercase artistic-shadow artistic-shadow-active disabled:opacity-50 disabled:cursor-not-allowed hover:bg-yellow-400 cursor-pointer"
           >
             SYNTHESIZE_NEW_PIPELINE
           </button>
@@ -416,7 +377,7 @@ export function WorkflowView({
               {/* Column 1: Staged */}
               <div className="flex flex-col bg-white border-[3px] border-black overflow-hidden shadow-[4px_4px_0_#000]">
                 <div className="bg-black text-white px-3 py-2 text-xs font-black uppercase flex justify-between items-center border-b-2 border-black">
-                  <span>01 // STAGED & BACKLOG</span>
+                  <span>01 // STAGED &amp; BACKLOG</span>
                   <span className="bg-[#FFE600] text-black px-1.5 py-0.2 text-[0.65rem] font-black">
                     {stagedTasks.length}
                   </span>
@@ -425,6 +386,8 @@ export function WorkflowView({
                   {stagedTasks.length === 0 && (
                     <div className="p-4 text-center text-xs text-gray-400 font-mono italic">
                       NO_STAGED_TASKS
+                      <br />
+                      <span className="text-[0.65rem] text-gray-500">Inject steps above or prompt AI to synthesize a pipeline.</span>
                     </div>
                   )}
                   {stagedTasks.map((t) => (
@@ -436,7 +399,7 @@ export function WorkflowView({
                         <span className="text-xs font-bold font-mono leading-tight">{t.label}</span>
                         <button
                           onClick={() => handleDeleteTask(t.id)}
-                          className="text-gray-400 hover:text-red-500 font-bold text-xs"
+                          className="text-gray-400 hover:text-red-500 font-bold text-xs cursor-pointer"
                         >
                           ✕
                         </button>
@@ -456,13 +419,13 @@ export function WorkflowView({
                         <div className="flex gap-1">
                           <button
                             onClick={() => handleExecuteStepWithAI(t)}
-                            className="bg-black text-[#FFE600] px-1.5 py-0.5 text-[0.6rem] font-bold uppercase hover:bg-gray-800"
+                            className="bg-black text-[#FFE600] px-1.5 py-0.5 text-[0.6rem] font-bold uppercase hover:bg-gray-800 cursor-pointer"
                           >
                             [AI_RUN]
                           </button>
                           <button
                             onClick={() => handleAdvanceTask(t.id)}
-                            className="bg-white border border-black px-1.5 py-0.5 text-[0.6rem] font-bold uppercase hover:bg-[#FFE600]"
+                            className="bg-white border border-black px-1.5 py-0.5 text-[0.6rem] font-bold uppercase hover:bg-[#FFE600] cursor-pointer"
                           >
                             START →
                           </button>
@@ -490,13 +453,13 @@ export function WorkflowView({
                   {inProgressTasks.map((t) => (
                     <div
                       key={t.id}
-                      className="border-[2px] border-black bg-white p-3 flex flex-col gap-2 border-l-[6px] border-l-[#FFE600] shadow-sm animate-pulse-none"
+                      className="border-[2px] border-black bg-white p-3 flex flex-col gap-2 border-l-[6px] border-l-[#FFE600] shadow-sm"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <span className="text-xs font-bold font-mono leading-tight">{t.label}</span>
                         <button
                           onClick={() => handleDeleteTask(t.id)}
-                          className="text-gray-400 hover:text-red-500 font-bold text-xs"
+                          className="text-gray-400 hover:text-red-500 font-bold text-xs cursor-pointer"
                         >
                           ✕
                         </button>
@@ -512,13 +475,13 @@ export function WorkflowView({
                         <div className="flex gap-1">
                           <button
                             onClick={() => handleExecuteStepWithAI(t)}
-                            className="bg-black text-[#FFE600] px-1.5 py-0.5 text-[0.6rem] font-bold uppercase hover:bg-gray-800"
+                            className="bg-black text-[#FFE600] px-1.5 py-0.5 text-[0.6rem] font-bold uppercase hover:bg-gray-800 cursor-pointer"
                           >
                             [AI_RUN]
                           </button>
                           <button
                             onClick={() => handleAdvanceTask(t.id)}
-                            className="bg-[#00CC44] text-black font-black border border-black px-1.5 py-0.5 text-[0.6rem] uppercase hover:bg-green-400"
+                            className="bg-[#00CC44] text-black font-black border border-black px-1.5 py-0.5 text-[0.6rem] uppercase hover:bg-green-400 cursor-pointer"
                           >
                             COMPLETE ✓
                           </button>
@@ -554,7 +517,7 @@ export function WorkflowView({
                         </span>
                         <button
                           onClick={() => handleDeleteTask(t.id)}
-                          className="text-gray-400 hover:text-red-500 font-bold text-xs"
+                          className="text-gray-400 hover:text-red-500 font-bold text-xs cursor-pointer"
                         >
                           ✕
                         </button>
@@ -565,7 +528,7 @@ export function WorkflowView({
                         </span>
                         <button
                           onClick={() => handleAdvanceTask(t.id)}
-                          className="bg-white border border-black px-1.5 py-0.5 text-[0.6rem] font-bold uppercase hover:bg-gray-100"
+                          className="bg-white border border-black px-1.5 py-0.5 text-[0.6rem] font-bold uppercase hover:bg-gray-100 cursor-pointer"
                         >
                           ↺ REOPEN
                         </button>
@@ -594,7 +557,6 @@ export function WorkflowView({
           )}
 
           <SmtpDrawer
-            onSaveToKnowledgeTrail={() => {}}
             emailTarget={emailTarget}
             setEmailTarget={setEmailTarget}
             handleEmailTransmission={handleEmailTransmission}

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { AIProvider, Message, ServerSmtpStatus, SupportTicket } from '../../types';
+import React, { useState } from 'react';
+import { AIProvider, Message, ServerSmtpStatus } from '../../types';
 import { TerminalOutput } from '../TerminalOutput';
 import { SmtpDrawer } from '../SmtpDrawer';
 
@@ -92,166 +92,89 @@ export function SupportView({
   saveSmtpCredentials,
   clearSmtpCredentials
 }: SupportViewProps) {
-  // Support Incident State
-  const [ticket, setTicket] = useState<SupportTicket>({
-    id: 'INC-84920',
-    severity: 'P1 - CRITICAL',
-    customerName: 'Alex Mercer (Lead SRE)',
-    accountTier: 'ENTERPRISE_VIP ($12.5k MRR)',
-    slaSecondsRemaining: 900, // 15 mins
-    sentiment: 'FRUSTRATED'
-  });
-  const [ticketStatus, setTicketStatus] = useState<'OPEN' | 'IN_TRIAGE' | 'ESCALATED' | 'RESOLVED'>('OPEN');
-
-  // Live SLA countdown ticker
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setTicket((prev) => ({
-        ...prev,
-        slaSecondsRemaining: Math.max(0, prev.slaSecondsRemaining - 1)
-      }));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const formatSlaTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-      .toString()
-      .padStart(2, '0');
-    const secs = (seconds % 60).toString().padStart(2, '0');
-    return `${mins}:${secs}`;
-  };
-
-  const handleGenerateNewTicket = () => {
-    const randomId = Math.floor(10000 + Math.random() * 90000);
-    setTicket({
-      id: `INC-${randomId}`,
-      severity: 'P1 - CRITICAL',
-      customerName: 'DevOps Escalation Team',
-      accountTier: 'ENTERPRISE_VIP ($12.5k MRR)',
-      slaSecondsRemaining: 900,
-      sentiment: 'NEUTRAL'
-    });
-    setTicketStatus('OPEN');
-  };
+  const [severity, setSeverity] = useState<'NORMAL' | 'HIGH' | 'CRITICAL'>('NORMAL');
+  const [category, setCategory] = useState<'GENERAL' | 'TECHNICAL' | 'BILLING' | 'INCIDENT'>('TECHNICAL');
 
   const handleSupportMacro = (macroPrompt: string) => {
-    const query = `${macroPrompt} regarding ticket #${ticket.id}: ${input || 'Customer reported API disruption'}`;
+    const context = `[CATEGORY: ${category} | PRIORITY: ${severity}]`;
+    const query = `${macroPrompt} ${context}: ${input || 'Customer reported service disruption'}`;
     setInput(query);
     onSendMessage(query);
   };
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Support Incident Ops Telemetry Bar */}
+      {/* Support Telemetry Bar */}
       <div data-tour="incident-telemetry" className="bg-[#00CC44] text-black border-b-[3px] border-black p-3 px-5 flex flex-wrap items-center justify-between gap-3 shadow-[0_2px_0_#000]">
         <div className="flex items-center gap-3 flex-wrap">
           <span className="bg-black text-[#00CC44] font-black text-xs px-2.5 py-1 tracking-wider uppercase border border-black">
-            TICKET #{ticket.id}
-          </span>
-          <span
-            className={`font-black text-xs px-2 py-0.5 border border-black uppercase ${
-              ticket.severity.includes('P1') ? 'bg-[#FF2D00] text-white animate-pulse' : 'bg-black text-white'
-            }`}
-          >
-            {ticket.severity}
+            SUPPORT_BOT // RESOLUTION_DESK
           </span>
           <span className="font-bold text-xs uppercase hidden md:inline">
-            CLIENT: {ticket.customerName}
+            AI-POWERED CUSTOMER SUPPORT &amp; INCIDENT TRIAGE ASSISTANT
           </span>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap text-xs">
-          {/* SLA Countdown Timer */}
-          <div className="flex items-center gap-1.5 bg-black text-white px-3 py-1 border border-black font-mono">
-            <span className="text-[#FFE600] font-black">SLA_BREACH_IN:</span>
-            <span
-              className={`font-black text-sm ${
-                ticket.slaSecondsRemaining < 300 ? 'text-[#FF2D00] animate-pulse' : 'text-white'
-              }`}
-            >
-              {formatSlaTime(ticket.slaSecondsRemaining)}
-            </span>
-          </div>
-
-          {/* Ticket Status Selector */}
+          {/* Priority selector */}
           <div className="flex items-center gap-1 bg-white text-black px-2 py-1 border border-black font-bold text-[0.7rem]">
-            <span>STATUS:</span>
+            <span>PRIORITY:</span>
             <select
-              value={ticketStatus}
-              onChange={(e) => setTicketStatus(e.target.value as any)}
+              value={severity}
+              onChange={(e) => setSeverity(e.target.value as any)}
               className="bg-transparent font-black cursor-pointer uppercase focus:outline-none"
             >
-              <option value="OPEN">OPEN</option>
-              <option value="IN_TRIAGE">IN_TRIAGE</option>
-              <option value="ESCALATED">ESCALATED</option>
-              <option value="RESOLVED">RESOLVED</option>
+              <option value="NORMAL">NORMAL</option>
+              <option value="HIGH">HIGH</option>
+              <option value="CRITICAL">CRITICAL</option>
             </select>
           </div>
 
-          {/* Customer Sentiment */}
+          {/* Category selector */}
           <div className="flex items-center gap-1 bg-white text-black px-2 py-1 border border-black font-bold text-[0.7rem]">
-            <span>SENTIMENT:</span>
-            <button
-              onClick={() =>
-                setTicket((prev) => ({
-                  ...prev,
-                  sentiment:
-                    prev.sentiment === 'NEUTRAL'
-                      ? 'FRUSTRATED'
-                      : prev.sentiment === 'FRUSTRATED'
-                      ? 'SATISFIED'
-                      : 'NEUTRAL'
-                }))
-              }
-              className="font-black underline cursor-pointer"
+            <span>CATEGORY:</span>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value as any)}
+              className="bg-transparent font-black cursor-pointer uppercase focus:outline-none"
             >
-              {ticket.sentiment === 'FRUSTRATED' && '🚨 FRUSTRATED'}
-              {ticket.sentiment === 'NEUTRAL' && '😐 NEUTRAL'}
-              {ticket.sentiment === 'SATISFIED' && '✅ SATISFIED'}
-            </button>
+              <option value="TECHNICAL">TECHNICAL</option>
+              <option value="BILLING">BILLING</option>
+              <option value="INCIDENT">INCIDENT</option>
+              <option value="GENERAL">GENERAL</option>
+            </select>
           </div>
-
-          <button
-            onClick={handleGenerateNewTicket}
-            className="bg-black text-[#FFE600] px-2 py-1 font-black uppercase text-[0.7rem] hover:bg-gray-800 border border-black"
-          >
-            [+] NEW_TICKET
-          </button>
         </div>
       </div>
 
       {/* Main Support Grid */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[330px_1fr] overflow-hidden">
-        {/* Left Console: Support Desk Cockpit */}
+        {/* Left Console: Support Desk Controls */}
         <section className="bg-white border-black border-r-[3px] p-4 flex flex-col gap-4 overflow-y-auto">
-          {/* Customer CRM Context Card */}
+          {/* Triage Guidance Card */}
           <div data-tour="crm-context" className="border-[2px] border-black p-3 bg-gray-50 flex flex-col gap-1.5 text-[0.68rem] font-mono">
             <div className="flex items-center justify-between border-b border-black pb-1">
-              <span className="font-black uppercase text-black">CRM_ACCOUNT_TELEMETRY</span>
-              <span className="bg-[#00CC44] text-black px-1 font-black text-[0.6rem]">ACTIVE_SLA</span>
+              <span className="font-black uppercase text-black">RESOLUTION_MODE</span>
+              <span className={`px-1.5 py-0.5 font-black text-[0.6rem] border border-black ${
+                severity === 'CRITICAL' ? 'bg-red-500 text-white' : severity === 'HIGH' ? 'bg-[#FFE600] text-black' : 'bg-[#00CC44] text-black'
+              }`}>
+                {severity}
+              </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">TIER:</span>
-              <span className="font-bold text-black">{ticket.accountTier}</span>
+              <span className="text-gray-500">CATEGORY:</span>
+              <span className="font-bold text-black">{category}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">REGION:</span>
-              <span className="font-bold text-black">us-east-1 (Primary Cluster)</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">OPERATOR:</span>
-              <span className="font-bold text-black">AGENT #NOC-SYS-42</span>
+              <span className="text-gray-500">KERNEL:</span>
+              <span className="font-bold text-black">{provider}</span>
             </div>
           </div>
 
           {/* User Input Area */}
           <div className="flex flex-col gap-1.5">
             <div className="flex justify-between items-center">
-              <label className="font-black uppercase text-[0.75rem]">CUSTOMER_ISSUE_DISPATCH:</label>
-              <span className="text-[0.6rem] bg-black text-[#00CC44] px-1 font-bold">
-                {ticketStatus}
-              </span>
+              <label className="font-black uppercase text-[0.75rem]">CUSTOMER_ISSUE_OR_TICKET:</label>
             </div>
             <textarea
               value={input}
@@ -262,7 +185,7 @@ export function SupportView({
                   onSendMessage(input);
                 }
               }}
-              placeholder={`PASTE INCOMING CUSTOMER TICKET OR INQUIRY...\nE.g.: "Production cluster failing 503 errors under load"`}
+              placeholder={`PASTE CUSTOMER INQUIRY OR ISSUE...\nE.g.: "User unable to connect to database cluster after migration"`}
               className="border-[3px] border-black p-3 bg-[#E5E5E5] focus:outline-none focus:bg-white h-28 font-mono text-xs uppercase resize-none shadow-[inset_2px_2px_0_#000]"
             />
           </div>
@@ -270,38 +193,38 @@ export function SupportView({
           {/* Rapid Resolution Macros */}
           <div data-tour="support-macros" className="flex flex-col gap-1.5">
             <span className="font-black uppercase text-[0.65rem] bg-black text-[#00CC44] px-2 py-0.5 inline-block self-start">
-              SLA_RESOLUTION_MACROS:
+              RESOLUTION_MACROS:
             </span>
             <div className="grid grid-cols-1 gap-1">
               <button
-                onClick={() => handleSupportMacro('Generate an urgent, empathetic customer auto-acknowledgement and initial triage report for')}
-                className="text-left border-[2px] border-black p-1.5 bg-white hover:bg-[#00CC44] text-[0.65rem] font-bold uppercase active:translate-y-0.5 transition-all"
+                onClick={() => handleSupportMacro('Draft an empathetic, clear customer acknowledgement and initial triage steps for')}
+                className="text-left border-[2px] border-black p-1.5 bg-white hover:bg-[#00CC44] text-[0.65rem] font-bold uppercase active:translate-y-0.5 transition-all cursor-pointer"
               >
-                [⚡ AUTO_ACKNOWLEDGE_TICKET]
+                [⚡ AUTO_ACKNOWLEDGE_CUSTOMER]
               </button>
               <button
-                onClick={() => handleSupportMacro('Draft a high-priority escalation brief for Tier-3 Site Reliability Engineers detailing')}
-                className="text-left border-[2px] border-black p-1.5 bg-white hover:bg-[#FF2D00] hover:text-white text-[0.65rem] font-bold uppercase active:translate-y-0.5 transition-all"
+                onClick={() => handleSupportMacro('Provide step-by-step technical troubleshooting and diagnostic commands for')}
+                className="text-left border-[2px] border-black p-1.5 bg-white hover:bg-[#FFE600] text-[0.65rem] font-bold uppercase active:translate-y-0.5 transition-all cursor-pointer"
               >
-                [🚨 ESCALATE_TO_TIER_3_SRE]
+                [🔍 TROUBLESHOOT_TECHNICAL_ISSUE]
               </button>
               <button
                 onClick={() => handleSupportMacro('Draft a comprehensive Root Cause Analysis (RCA) and mitigation plan for')}
-                className="text-left border-[2px] border-black p-1.5 bg-white hover:bg-[#FFE600] text-[0.65rem] font-bold uppercase active:translate-y-0.5 transition-all"
+                className="text-left border-[2px] border-black p-1.5 bg-white hover:bg-[#FFE600] text-[0.65rem] font-bold uppercase active:translate-y-0.5 transition-all cursor-pointer"
               >
                 [📋 GENERATE_INCIDENT_RCA]
               </button>
               <button
-                onClick={() => handleSupportMacro('Calculate SLA breach credit and compose polite compensation email for')}
-                className="text-left border-[2px] border-black p-1.5 bg-white hover:bg-[#00CC44] text-[0.65rem] font-bold uppercase active:translate-y-0.5 transition-all"
+                onClick={() => handleSupportMacro('Compose a polite billing and refund response for')}
+                className="text-left border-[2px] border-black p-1.5 bg-white hover:bg-[#00CC44] text-[0.65rem] font-bold uppercase active:translate-y-0.5 transition-all cursor-pointer"
               >
-                [💳 ISSUE_SLA_REFUND_CREDIT]
+                [💳 DRAFT_BILLING_REFUND_REPLY]
               </button>
               <button
-                onClick={() => handleSupportMacro('Provide security verification protocol and 2FA reset instructions for')}
-                className="text-left border-[2px] border-black p-1.5 bg-white hover:bg-gray-100 text-[0.65rem] font-bold uppercase active:translate-y-0.5 transition-all"
+                onClick={() => handleSupportMacro('Provide security verification and password reset instructions for')}
+                className="text-left border-[2px] border-black p-1.5 bg-white hover:bg-gray-100 text-[0.65rem] font-bold uppercase active:translate-y-0.5 transition-all cursor-pointer"
               >
-                [🔒 VERIFY_ACCOUNT_AUTH]
+                [🔒 VERIFY_ACCOUNT_SECURITY]
               </button>
             </div>
           </div>
@@ -325,7 +248,7 @@ export function SupportView({
               <div className="flex gap-1 flex-1">
                 <button
                   onClick={() => setStreamSpeed(50)}
-                  className={`flex-1 border-[2px] border-black text-[0.55rem] font-bold ${
+                  className={`flex-1 border-[2px] border-black text-[0.55rem] font-bold cursor-pointer ${
                     streamSpeed === 50 ? 'bg-[#FFE600]' : 'bg-white hover:bg-gray-100'
                   }`}
                 >
@@ -333,7 +256,7 @@ export function SupportView({
                 </button>
                 <button
                   onClick={() => setStreamSpeed(0)}
-                  className={`flex-1 border-[2px] border-black text-[0.55rem] font-bold ${
+                  className={`flex-1 border-[2px] border-black text-[0.55rem] font-bold cursor-pointer ${
                     streamSpeed === 0 ? 'bg-[#00CC44] text-black font-black' : 'bg-white hover:bg-gray-100'
                   }`}
                 >
@@ -347,18 +270,18 @@ export function SupportView({
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={startSTT}
-              className={`border-[2px] border-black p-2 font-bold text-[0.65rem] uppercase active:translate-y-0.5 ${
+              className={`border-[2px] border-black p-2 font-bold text-[0.65rem] uppercase active:translate-y-0.5 cursor-pointer ${
                 isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-white hover:bg-gray-100'
               }`}
             >
-              {isRecording ? 'RECORDING...' : 'CALL_VOICE_STT'}
+              {isRecording ? 'LISTENING...' : 'VOICE_COMMAND'}
             </button>
             <button
               onClick={() => setComplexityMode(complexityMode === 'SIMPLE' ? 'DETAILED' : 'SIMPLE')}
               className={`border-[2px] border-black p-2 font-black text-[0.65rem] uppercase active:translate-y-0.5 cursor-pointer ${
-                complexityMode === 'SIMPLE' ? 'bg-[#FFE600] text-black' : 'bg-black text-white'
+                complexityMode === 'SIMPLE' ? 'bg-[#00CC44] text-black' : 'bg-black text-[#00CC44]'
               }`}
-              title="Toggle response style: Simple (Clear & Concise) vs Detailed (In-depth)"
+              title="Toggle response style: Simple (Concise) vs Detailed (In-depth)"
             >
               STYLE: {complexityMode}
             </button>
@@ -367,13 +290,13 @@ export function SupportView({
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={exportSession}
-              className="border-[2px] border-black p-1.5 bg-black text-[#00CC44] hover:bg-gray-800 text-[0.65rem] font-bold uppercase active:translate-y-0.5"
+              className="border-[2px] border-black p-1.5 bg-black text-white hover:bg-[#00CC44] hover:text-black text-[0.65rem] font-bold uppercase active:translate-y-0.5 cursor-pointer"
             >
-              SAVE_TRANSCRIPT
+              EXPORT_LOGS
             </button>
             <button
               onClick={loadHistory}
-              className="border-[2px] border-black p-1.5 bg-white text-black hover:bg-[#FFE600] text-[0.65rem] font-bold uppercase active:translate-y-0.5"
+              className="border-[2px] border-black p-1.5 bg-white text-black hover:bg-[#00CC44] text-[0.65rem] font-bold uppercase active:translate-y-0.5 cursor-pointer"
             >
               LOAD_HISTORY
             </button>
@@ -383,13 +306,13 @@ export function SupportView({
           <button
             onClick={() => onSendMessage(input)}
             disabled={isTyping || !input.trim()}
-            className="bg-[#00CC44] text-black border-[3px] border-black p-3 font-black text-center uppercase artistic-shadow artistic-shadow-active disabled:opacity-50 disabled:cursor-not-allowed hover:bg-green-400"
+            className="bg-[#00CC44] text-black border-[3px] border-black p-3 font-black text-center uppercase artistic-shadow artistic-shadow-active disabled:opacity-50 disabled:cursor-not-allowed hover:bg-green-400 cursor-pointer"
           >
-            DISPATCH_SUPPORT_RESOLUTION
+            DISPATCH_RESOLUTION_QUERY
           </button>
         </section>
 
-        {/* Center: Live Terminal & Incident Log */}
+        {/* Center: Live Terminal & Resolution Log */}
         <section className="bg-[#E5E5E5] p-4 flex flex-col gap-3 overflow-hidden">
           <TerminalOutput
             provider={provider}
@@ -408,7 +331,6 @@ export function SupportView({
           />
 
           <SmtpDrawer
-            onSaveToKnowledgeTrail={() => {}}
             emailTarget={emailTarget}
             setEmailTarget={setEmailTarget}
             handleEmailTransmission={handleEmailTransmission}
